@@ -1,0 +1,22 @@
+0 verbose cli /usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@10.9.3
+2 info using node@v22.18.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/moon-mac/Desktop/성경앱 dev/git.report/.npmrc
+5 silly config load:file:/Users/moon-mac/.npmrc
+6 silly config load:file:/Users/moon-mac/.npm-global/etc/npmrc
+7 verbose title npm exec firebase-tools deploy -P dev
+8 verbose argv "exec" "--" "firebase-tools" "deploy" "-P" "dev"
+9 verbose logfile logs-max:10 dir:/Users/moon-mac/Desktop/성경앱 dev/git.report/.npm-cache/_logs/2026-02-26T08_42_40_944Z-
+10 verbose logfile /Users/moon-mac/Desktop/성경앱 dev/git.report/.npm-cache/_logs/2026-02-26T08_42_40_944Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 silly logfile done cleaning log files
+13 silly packumentCache heap:2197815296 maxSize:549453824 maxEntrySize:274726912
+14 http fetch GET 200 https://registry.npmjs.org/firebase-tools 159ms (cache miss)
+15 silly packumentCache heap:2197815296 maxSize:549453824 maxEntrySize:274726912
+16 verbose cwd /Users/moon-mac/Desktop/성경앱 dev/git.report
+17 verbose os Darwin 24.6.0
+18 verbose node v22.18.0
+19 verbose npm  v10.9.3
+20 verbose exit 0
+21 info ok
