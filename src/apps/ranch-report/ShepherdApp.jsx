@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import ShepherdList from './pages/ShepherdList.jsx';
-import ShepherdWrite from './pages/ShepherdWrite.jsx';
-import ShepherdAdmin from './pages/ShepherdAdmin.jsx';
-import ShepherdPersonal from './pages/ShepherdPersonal.jsx';
+
+const ShepherdList = lazy(() => import('./pages/ShepherdList.jsx'));
+const ShepherdWrite = lazy(() => import('./pages/ShepherdWrite.jsx'));
+const ShepherdAdmin = lazy(() => import('./pages/ShepherdAdmin.jsx'));
+const ShepherdPersonal = lazy(() => import('./pages/ShepherdPersonal.jsx'));
 
 export default function ShepherdApp({ user, onLogout }) {
   const navigate = useNavigate();
@@ -20,14 +21,16 @@ export default function ShepherdApp({ user, onLogout }) {
         <button onClick={() => onLogout?.()} style={navBtn}>로그아웃</button>
       </div>
 
-      <Routes>
-        <Route path='/' element={<Navigate to='list' replace />} />
-        <Route path='/list' element={<ShepherdList user={user} />} />
-        <Route path='/write' element={<ShepherdWrite user={user} />} />
-        <Route path='/personal' element={<ShepherdPersonal user={user} />} />
-        <Route path='/admin/*' element={<ShepherdAdmin user={user} />} />
-        <Route path='*' element={<Navigate to='list' replace />} />
-      </Routes>
+      <Suspense fallback={<div style={{ padding: 20, textAlign: 'center', color: '#102A43', fontWeight: 600 }}>화면을 불러오는 중입니다...</div>}>
+        <Routes>
+          <Route path='/' element={<Navigate to='list' replace />} />
+          <Route path='/list' element={<ShepherdList user={user} />} />
+          <Route path='/write' element={<ShepherdWrite user={user} />} />
+          <Route path='/personal' element={<ShepherdPersonal user={user} />} />
+          <Route path='/admin/*' element={<ShepherdAdmin user={user} />} />
+          <Route path='*' element={<Navigate to='list' replace />} />
+        </Routes>
+      </Suspense>
     </div>
   );
 }

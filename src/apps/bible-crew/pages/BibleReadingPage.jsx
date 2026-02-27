@@ -6,6 +6,51 @@ import { getDailyBiblePortionByCrew } from '../utils/bibleUtils';
 import { db } from '../firebase';
 import { ref, update } from 'firebase/database';
 
+// --- 전역 성경 데이터 캐싱 (메모리 + 디바이스 캐시 최적화) ---
+let cachedBibleData = null;
+let bibleFetchPromise = null;
+
+async function getBibleData() {
+  // 1단계: 메모리 캐시 확인 (가장 빠름, 앱이 켜져있는 동안 유지)
+  if (cachedBibleData) return cachedBibleData;
+
+  // fetch 요청 중복 방지
+  if (!bibleFetchPromise) {
+    bibleFetchPromise = (async () => {
+      // 2단계: 브라우저 캐시 스토리지 확인 (디바이스 저장, 오프라인 지원)
+      if ('caches' in window) {
+        try {
+          const cache = await caches.open('bible-data-cache-v1');
+          const cacheRes = await cache.match('/bible_kor.json');
+          if (cacheRes) {
+            console.log('[Cache] 성경 데이터를 기기 저장소에서 1초 만에 불러왔습니다.');
+            return await cacheRes.json();
+          }
+
+          // 캐시에 없으면 다운로드 후 기기에 영구 저장
+          console.log('[Cache] 성경 데이터가 기기에 없어 최초 1회 다운로드합니다.');
+          const fetchRes = await fetch('/bible_kor.json');
+          if (!fetchRes.ok) throw new Error('성경 데이터를 불러오지 못했습니다.');
+
+          cache.put('/bible_kor.json', fetchRes.clone());
+          return await fetchRes.json();
+        } catch (e) {
+          console.warn('[Cache] 캐시 사용 중 오류 발생, 일반 다운로드로 전환:', e);
+        }
+      }
+
+      // 3단계: 구형 브라우저이거나 오류 시 일반 폴백 다운로드
+      const res = await fetch('/bible_kor.json');
+      if (!res.ok) throw new Error('성경 데이터를 불러오지 못했습니다.');
+      return await res.json();
+    })();
+  }
+
+  cachedBibleData = await bibleFetchPromise;
+  return cachedBibleData;
+}
+// ------------------------------------------
+
 function useQuery() {
   const { search } = useLocation();
   return React.useMemo(() => new URLSearchParams(search), [search]);
@@ -22,19 +67,15 @@ export default function BibleReadingPage({ user }) {
   const date = query.get('date');
 
   // ✅ '달리는 중..' 상태를 위해: 성경 읽기 페이지 진입 시 dailyActivity 기록
-  // - RTDB 경로: users/{uid}/dailyActivity/{YYYY-MM-DD}/biblePageVisited = true
-  // - 기준 날짜는 URL의 date 파라미터(일일 분량 날짜). 일반적으로 '오늘'을 열게 됨.
   useEffect(() => {
     if (!uid) return;
     if (!date) return;
-    // date 형식이 깨져 있으면 기록하지 않음
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
     const path = ref(db, `users/${uid}/dailyActivity/${date}`);
     update(path, {
       biblePageVisited: true,
       visitedAt: Date.now(),
     }).catch((e) => {
-      // rules 또는 네트워크 문제 등으로 실패할 수 있으나, 페이지 자체는 계속 열리도록 한다.
       console.error('[dailyActivity] failed to mark biblePageVisited', e);
     });
   }, [uid, date]);
@@ -55,6 +96,7 @@ export default function BibleReadingPage({ user }) {
   }, [fontSize]);
 
   useEffect(() => {
+    let isMounted = true;
     async function init() {
       try {
         if (!date) {
@@ -78,21 +120,25 @@ export default function BibleReadingPage({ user }) {
           setLoading(false);
           return;
         }
-        const res = await fetch('/bible_kor.json');
-        if (!res.ok) {
-          throw new Error('성경 데이터를 불러오지 못했습니다.');
+
+        // 💡 혁신적인 개선: 전역 해시된 성경 데이터 즉시 가져오기
+        const data = await getBibleData();
+
+        if (isMounted) {
+          setBible(data);
+          setPortion(p);
+          setLoading(false);
         }
-        const data = await res.json();
-        setBible(data);
-        setPortion(p);
-        setLoading(false);
       } catch (e) {
         console.error(e);
-        setError('성경을 불러오는 중 오류가 발생했습니다.');
-        setLoading(false);
+        if (isMounted) {
+          setError('성경을 불러오는 중 오류가 발생했습니다.');
+          setLoading(false);
+        }
       }
     }
     init();
+    return () => { isMounted = false; };
   }, [crew, date]);
 
 

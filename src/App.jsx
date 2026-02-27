@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import AppSelect from './pages/AppSelect';
-import ShepherdApp from './apps/ranch-report/ShepherdApp';
-import BibleCrewApp from './apps/bible-crew/BibleCrewApp';
+const ShepherdApp = React.lazy(() => import('./apps/ranch-report/ShepherdApp'));
+const BibleCrewApp = React.lazy(() => import('./apps/bible-crew/BibleCrewApp'));
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -36,15 +36,17 @@ export default function App() {
 
     return (
         <HashRouter>
-            <Routes>
-                <Route path="/" element={<Navigate to={user ? "/select" : "/login"} replace />} />
-                <Route path="/login" element={!user ? <Login onLogin={handleLogin} /> : <Navigate to="/select" replace />} />
-                <Route path="/select" element={user ? <AppSelect user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+            <React.Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#0071E3', fontWeight: 600 }}>앱을 불러오는 중입니다...</div>}>
+                <Routes>
+                    <Route path="/" element={<Navigate to={user ? "/select" : "/login"} replace />} />
+                    <Route path="/login" element={!user ? <Login onLogin={handleLogin} /> : <Navigate to="/select" replace />} />
+                    <Route path="/select" element={user ? <AppSelect user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
 
-                {/* Apps */}
-                <Route path="/shepherd/*" element={user ? <ShepherdApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
-                <Route path="/bible-crew/*" element={user ? <BibleCrewApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
-            </Routes>
+                    {/* Lazy-loaded Apps */}
+                    <Route path="/shepherd/*" element={user ? <ShepherdApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+                    <Route path="/bible-crew/*" element={user ? <BibleCrewApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+                </Routes>
+            </React.Suspense>
         </HashRouter>
     );
 }
