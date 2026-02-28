@@ -3,13 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import PrayerScentModal from '../apps/ranch-report/components/PrayerScentModal.jsx';
 import { getSundayOfWeek, normalizeLeaders } from '../apps/ranch-report/utils.js';
 import { subscribeToPrayerScent, subscribeToShepherdGroups, subscribeToShepherdReport, subscribeToMainNotice } from '../apps/ranch-report/shepherdSync.js';
+import { subscribeToSettings } from '../firebaseSync.js';
 
 export default function AppSelect({ user, onLogout }) {
     const navigate = useNavigate();
     const [isPrayerScentModalOpen, setIsPrayerScentModalOpen] = useState(false);
     const [prayerScentData, setPrayerScentData] = useState({});
     const [notice, setNotice] = useState('');
+    const [settings, setSettings] = useState({});
     const sunday = getSundayOfWeek(new Date());
+
+    useEffect(() => {
+        const unsub = subscribeToSettings((v) => setSettings(v || {}));
+        return () => { if (typeof unsub === 'function') unsub(); };
+    }, []);
+
+    const bulletinUrl = (settings.bulletinUrl || '').trim();
 
     useEffect(() => {
         const unsub = subscribeToMainNotice((val) => {
@@ -132,7 +141,7 @@ export default function AppSelect({ user, onLogout }) {
                         <div style={{ fontSize: 15, color: '#86868B', fontWeight: 500, marginBottom: 4 }}>
                             안녕하세요, 마산회원교회
                         </div>
-                        <div style={{ fontSize: 20, color: '#0071E3', fontWeight: 700, marginBottom: 8, letterSpacing: '-0.4px' }}>
+                        <div style={{ fontSize: 20, color: '#1565C0', fontWeight: 700, marginBottom: 8, letterSpacing: '-0.4px' }}>
                             하나님을 섬기는 예배자
                         </div>
                         <h2 className="title-large" style={{ margin: 0, lineHeight: 1.2, fontSize: 32 }}>
@@ -145,7 +154,7 @@ export default function AppSelect({ user, onLogout }) {
                             background: '#E5E5EA',
                             padding: '8px 16px',
                             borderRadius: '20px',
-                            color: '#0071E3',
+                            color: '#1565C0',
                             fontSize: '15px',
                             fontWeight: 600
                         }}
@@ -399,6 +408,53 @@ export default function AppSelect({ user, onLogout }) {
                         </div>
                         <h3 className="title-medium" style={{ margin: 0, fontSize: window.innerWidth < 480 ? 16 : 20, fontWeight: 800, letterSpacing: '-0.5px', wordBreak: 'keep-all' }}>목자보고</h3>
                     </div>
+
+                    {/* Church Bulletin App - Bottom Full Width */}
+                    {bulletinUrl && (
+                        <div
+                            onClick={() => window.open(bulletinUrl, '_blank', 'noopener,noreferrer')}
+                            className="apple-card"
+                            style={{
+                                cursor: 'pointer',
+                                padding: window.innerWidth < 480 ? '20px' : '24px 30px',
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'flex-start',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                gridColumn: '1 / -1',
+                                gap: 16
+                            }}
+                        >
+                            <div style={{
+                                position: 'absolute',
+                                top: -20, right: -20,
+                                width: 80, height: 80,
+                                background: '#F59E0B',
+                                opacity: 0.1,
+                                borderRadius: '50%',
+                                filter: 'blur(20px)'
+                            }} />
+                            <div style={{
+                                fontSize: 32,
+                                background: '#FFFBEB',
+                                width: window.innerWidth < 480 ? 50 : 60,
+                                height: window.innerWidth < 480 ? 50 : 60,
+                                borderRadius: '16px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                flexShrink: 0
+                            }}>
+                                📄
+                            </div>
+                            <div>
+                                <h3 className="title-medium" style={{ margin: 0, fontSize: window.innerWidth < 480 ? 16 : 20, fontWeight: 800, letterSpacing: '-0.5px' }}>주보</h3>
+                                <p style={{ margin: '4px 0 0 0', fontSize: window.innerWidth < 480 ? 12 : 14, color: '#86868B', letterSpacing: '-0.3px', fontWeight: 500 }}>
+                                    교회 온라인 주보
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {isPrayerScentModalOpen && (
                         <PrayerScentModal

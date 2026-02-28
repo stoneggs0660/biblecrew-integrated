@@ -300,18 +300,68 @@ export default function HallOfFame() {
       return String(a.name).localeCompare(String(b.name), 'ko');
     });
 
-    setYearlyTop11(list.slice(0, 11));
+    // 4) 공동 순위(rank) 계산 로직 추가
+    let currentRank = 1;
+    let rankOffset = 0;
+
+    const rankedList = list.map((u, index) => {
+      if (index === 0) {
+        return { ...u, rank: currentRank };
+      }
+
+      const prev = list[index - 1];
+      const isTie = (u.totalDok === prev.totalDok) &&
+        (u.points === prev.points) &&
+        (u.gold === prev.gold) &&
+        (u.silver === prev.silver) &&
+        (u.bronze === prev.bronze);
+
+      if (isTie) {
+        rankOffset += 1;
+      } else {
+        currentRank += 1 + rankOffset;
+        rankOffset = 0;
+      }
+
+      return { ...u, rank: currentRank };
+    });
+
+    setYearlyTop11(rankedList.slice(0, 11));
   }, [hofYearData, legacyMonthlyData, selectedYear, usersMap]);
 
   const months = useMemo(() => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], []);
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() + 1);
 
+  // ✅ 데이터 변경 시 가장 최근에 계산된(저장된) 월을 찾아 기본값으로 변경
+  useEffect(() => {
+    let latestMonth = null;
+    if (hofYearData?.monthlyResults) {
+      const keys = Object.keys(hofYearData.monthlyResults).map(Number).filter(n => !isNaN(n));
+      if (keys.length > 0) latestMonth = Math.max(...keys);
+    } else if (legacyMonthlyData) {
+      const keys = Object.keys(legacyMonthlyData).map(Number).filter(n => !isNaN(n));
+      if (keys.length > 0) latestMonth = Math.max(...keys);
+    }
+
+    if (latestMonth !== null) {
+      setViewMonth(latestMonth);
+    } else {
+      // 데이터가 아예 없을 때는 시스템상의 현재 월로 지정
+      setViewMonth(new Date().getMonth() + 1);
+    }
+  }, [hofYearData, legacyMonthlyData, selectedYear]);
+
   // 현재 선택된 연도/월의 데이터 추출
   const currentMonthData = useMemo(() => {
-    if (!hofYearData?.monthlyResults) return null;
     const mm = String(viewMonth).padStart(2, '0');
-    return hofYearData.monthlyResults[mm] || null;
-  }, [hofYearData, viewMonth]);
+    if (hofYearData?.monthlyResults?.[mm]) {
+      return hofYearData.monthlyResults[mm];
+    }
+    if (legacyMonthlyData?.[mm]) {
+      return legacyMonthlyData[mm];
+    }
+    return null;
+  }, [hofYearData, legacyMonthlyData, viewMonth]);
 
   // 해당 월에 '1독'을 달성한 사람 추출
   const monthlyDokAchievers = useMemo(() => {
@@ -385,9 +435,9 @@ export default function HallOfFame() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '14px 20px',
-                    background: idx === 0 ? 'linear-gradient(90deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%)' : 'rgba(255,255,255,0.02)',
+                    background: 'rgba(255,255,255,0.02)',
                     borderRadius: 16,
-                    border: idx === 0 ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.05)'
+                    border: '1px solid rgba(255,255,255,0.05)'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
                       <div style={{
@@ -396,15 +446,15 @@ export default function HallOfFame() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: idx < 3 ? 24 : 14,
-                        color: idx < 3 ? 'inherit' : '#64748B',
+                        fontSize: u.rank <= 3 ? 20 : 16,
+                        color: u.rank <= 3 ? '#FBBF24' : '#64748B',
                         fontWeight: 900,
-                        background: idx < 3 ? 'transparent' : 'rgba(255,255,255,0.05)',
+                        background: 'rgba(255,255,255,0.05)',
                         borderRadius: 8
                       }}>
-                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                        {u.rank}
                       </div>
-                      <div style={{ fontSize: 18, fontWeight: idx < 3 ? 800 : 600 }}>{u.name}</div>
+                      <div style={{ fontSize: 18, fontWeight: u.rank <= 3 ? 800 : 600 }}>{u.name}</div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

@@ -270,28 +270,6 @@ export default function Login({ onLogin }) {
 
             <form onSubmit={handleSubmit} style={{ maxWidth: 480, margin: '0 auto' }}>
 
-                {bulletinUrl ? (
-                    <a
-                        href={bulletinUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                            display: 'block',
-                            width: '100%',
-                            padding: 14,
-                            marginBottom: 12,
-                            borderRadius: 10,
-                            textAlign: 'center',
-                            textDecoration: 'none',
-                            background: '#1D3557',
-                            color: '#fff',
-                            fontSize: 18,
-                            fontWeight: 700,
-                        }}
-                    >
-                        📄 주보
-                    </a>
-                ) : null}
                 <input
                     placeholder="이름"
                     value={name}
