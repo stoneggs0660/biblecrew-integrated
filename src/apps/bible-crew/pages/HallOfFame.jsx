@@ -561,18 +561,18 @@ export default function HallOfFame() {
                 📅 {viewMonth}월 완주 스포트라이트
               </h3>
 
-              {!currentMonthData ? (
+              {(!currentMonthData && monthlyDokAchievers.length === 0) ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748B' }}>
-                  해당 월의 확정된 기록이 없습니다.
+                  해당 월의 확정된 기록 또는 완독자가 없습니다.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
 
                   {/* 메달 수여자 */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
-                    <MedalCard title="🥇 금메달 (고급)" items={currentMonthData.gold} color="#F59E0B" />
-                    <MedalCard title="🥈 은메달 (중급)" items={currentMonthData.silver} color="#94A3B8" />
-                    <MedalCard title="🥉 동메달 (초급/기타)" items={currentMonthData.bronze} color="#B45309" />
+                    <MedalCard title="🥇 금메달 (고급)" items={currentMonthData?.gold} color="#F59E0B" />
+                    <MedalCard title="🥈 은메달 (중급)" items={currentMonthData?.silver} color="#94A3B8" />
+                    <MedalCard title="🥉 동메달 (초급/기타)" items={currentMonthData?.bronze} color="#B45309" />
                   </div>
 
                   {/* 이달의 1독자 */}
