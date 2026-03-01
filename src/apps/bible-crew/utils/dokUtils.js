@@ -21,12 +21,22 @@ export function calculateDokStatus(earnedMedals = {}) {
     };
 
     Object.keys(earnedMedals).forEach(key => {
-        // key 형식: "YYYY-MM_반이름"
-        const parts = key.split('_');
-        if (parts.length < 2) return;
+        const value = earnedMedals[key];
 
-        const crewName = parts[1];
-        if (inventory.hasOwnProperty(crewName)) {
+        // key 형식: "YYYY-MM_반이름" 또는 구버전 "YYYY-MM"
+        const parts = key.split('_');
+        let crewName = '';
+
+        if (parts.length >= 2) {
+            crewName = parts[1]; // 신규 포맷
+        } else {
+            // 과거 포맷: 반 이름이 없다면 메달 종류로 유추
+            if (value === 'gold') crewName = '고급반';
+            else if (value === 'silver') crewName = '중급반';
+            else if (value === 'bronze') crewName = '초급반'; // 과거 동메달은 보통 기본 초급반
+        }
+
+        if (crewName && inventory.hasOwnProperty(crewName)) {
             inventory[crewName]++;
         }
     });
