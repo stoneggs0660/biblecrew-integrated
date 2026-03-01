@@ -363,10 +363,54 @@ export default function HallOfFame() {
     return null;
   }, [hofYearData, legacyMonthlyData, viewMonth]);
 
-  // 해당 월에 '1독'을 달성한 사람 추출
+  // 해당 월에 '1독'을 달성한 사람 동적 추출 (과거 누락된 데이터 대응)
   const monthlyDokAchievers = useMemo(() => {
-    return currentMonthData?.dokAchievers || [];
-  }, [currentMonthData]);
+    if (!usersMap || !selectedYear || !viewMonth) return [];
+
+    const targetYm = `${selectedYear}-${String(viewMonth).padStart(2, '0')}`;
+    const achievers = [];
+
+    // usersMap 전체 순회
+    Object.values(usersMap).forEach(user => {
+      const medals = user.earnedMedals || {};
+
+      // ✅ 1. 해당 월(targetYm)에 수여된 메달이 1개라도 있는지 확인
+      // 예: "2024-02_고급반", "2024-02_초급반" 등
+      const hasMedalThisMonth = Object.keys(medals).some(key => key.startsWith(targetYm));
+      if (!hasMedalThisMonth) return;
+
+      // ✅ 2. targetYm 까지의 전체 메달 조합과, targetYm 직전 월까지의 조합 분류
+      const medalsTotal = {};
+      const medalsBefore = {};
+
+      Object.entries(medals).forEach(([key, value]) => {
+        const keyYm = key.substring(0, 7); // "YYYY-MM" 추출
+        if (keyYm <= targetYm) {
+          medalsTotal[key] = value;
+          if (keyYm < targetYm) {
+            medalsBefore[key] = value;
+          }
+        }
+      });
+
+      // ✅ 3. 이전 달까지의 1독 개수와 이번 달을 포함한 1독 개수를 계산하여 비교
+      const totalDokNow = calculateDokStatus(medalsTotal).totalDok;
+      const totalDokBefore = calculateDokStatus(medalsBefore).totalDok;
+
+      // 이번 달 수료로 인해 새로운 1독이 추가되었다면 완독자로 선정!
+      if (totalDokNow > totalDokBefore) {
+        achievers.push({
+          name: user.name,
+          dokCount: totalDokNow
+        });
+      }
+    });
+
+    // 완독 수 내림차순, 이름 가나다 순으로 정렬
+    achievers.sort((a, b) => b.dokCount - a.dokCount || String(a.name).localeCompare(String(b.name), 'ko'));
+
+    return achievers;
+  }, [usersMap, selectedYear, viewMonth]);
 
   return (
     <div style={{

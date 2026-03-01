@@ -131,15 +131,6 @@ export default function CrewMembers({ user }) {
       });
     });
 
-    // 2. DB crew 기준 (누락된 인원)
-    Object.entries(users || {}).forEach(([uid, info]) => {
-      if (processedUids.has(uid)) return;
-      const c = info.crew;
-      if (c && byCrew[c]) {
-        addMemberData(c, uid, info);
-      }
-    });
-
     // 정렬
     Object.keys(byCrew).forEach(k => {
       byCrew[k].sort((a, b) => (b.chapters || 0) - (a.chapters || 0));

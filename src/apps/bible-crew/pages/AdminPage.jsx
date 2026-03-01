@@ -206,17 +206,6 @@ export default function AdminPage({ user }) {
       });
     });
 
-    // (2) DB crew 기준 순회 -> "승인 명단엔 없어도, 소속이 되어 있는 사람도 표시" (기존 배정자 등)
-    Object.entries(users || {}).forEach(([uid, info]) => {
-      if (processedUids.has(uid)) return; // 이미 위에서 처리된 사람은 패스
-
-      const userCrew = info.crew;
-      if (userCrew && CREW_KEYS.includes(userCrew)) {
-        // 이 사람은 승인명단엔 없지만, crew정보가 살아있으므로 표시
-        addToStatusList(userCrew, uid, users, crews, portionByCrewAndDate, uptoDates, dates, todayKey, combinedStatus);
-      }
-    });
-
     // 정렬
     Object.keys(combinedStatus).forEach((crew) => {
       combinedStatus[crew].sort((a, b) => b.chapters - a.chapters);

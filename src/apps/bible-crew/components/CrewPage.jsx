@@ -218,14 +218,6 @@ export default function CrewPage({ crewName, user }) {
       addToList(uid, list, usersNode, portionMap, uptoDates, usersMap, dates, todayKey);
     });
 
-    // (2) 소속 정보(crew) 기준
-    Object.entries(usersMap || {}).forEach(([uid, info]) => {
-      if (processedUids.has(uid)) return; // 이미 처리됨
-      if (info.crew === crewName) {
-        addToList(uid, list, usersNode, portionMap, uptoDates, usersMap, dates, todayKey);
-      }
-    });
-
     list.sort((a, b) => (b.chapters || 0) - (a.chapters || 0));
     setCrewStatus(list);
   }, [crewName, allCrews, usersMap, approvalList]);
