@@ -3,6 +3,14 @@
     "dev": "biblecrew-dev",
     "prod": "biblecrew-e14f3"
   },
-  "targets": {},
+  "targets": {
+    "biblecrew-e14f3": {
+      "hosting": {
+        "prod": [
+          "biblecrew-e14f3"
+        ]
+      }
+    }
+  },
   "etags": {}
 }

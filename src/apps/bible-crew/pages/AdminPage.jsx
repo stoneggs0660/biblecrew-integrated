@@ -53,7 +53,176 @@ import { calculateMonthlyRankingForMonth } from '../utils/rankingUtils';
 import { getMonthDates } from '../utils/dateUtils';
 import { getDailyBiblePortionByCrew } from '../utils/bibleUtils';
 import { getTodayCrewState } from '../utils/crewStatusUtils';
-import { calculateDokStatus } from '../utils/dokUtils';
+import { calculateDokStatus, calculateDokStatusDetailed } from '../utils/dokUtils';
+
+function AdminStatsSearchBlock({ users }) {
+  const [selectedYm, setSelectedYm] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [activeTab, setActiveTab] = useState('monthly_finishers'); // 탭 상태
+
+  const stats = React.useMemo(() => {
+    const allUsers = Object.values(users || {});
+
+    // 달별 완주자 명단 (반별로 그룹)
+    const finishersByCrew = {
+      '고급반': [],
+      '중급반': [],
+      '초급반(구약A)': [],
+      '초급반(구약B)': [],
+      '초급반': [],
+      '신약(파노라마)': [],
+      '구약(파노라마)': []
+    };
+
+    const monthlyDokAchievers = [];
+    const yearlyDokUsers = [];
+    const remainingFragments = [];
+
+    allUsers.forEach(u => {
+      const medals = u.earnedMedals || {};
+      const hasMedalThisMonth = Object.keys(medals).some(k => k.startsWith(selectedYm));
+
+      if (hasMedalThisMonth) {
+        // 완주자 명단 (반별로 묶기)
+        Object.entries(medals).forEach(([k, v]) => {
+          if (k.startsWith(selectedYm)) {
+            const crewName = k.split('_')[1] || (v === 'gold' ? '고급반' : v === 'silver' ? '중급반' : '초급반');
+            if (finishersByCrew[crewName]) {
+              finishersByCrew[crewName].push(u.name || u.uid);
+            }
+          }
+        });
+
+        // 1독자 계산 로직 고도화 (calculateDokStatusDetailed 사용)
+        const dokStatusMap = calculateDokStatusDetailed(medals);
+
+        // 1독을 이룬 조합들(배열의 배열)
+        const usedCombinations = dokStatusMap.usedMedals || [];
+
+        // 이번 달 메달이 포함되어 있는 1독 조합이 있는지 확인
+        const newDokCombinations = usedCombinations.filter(combo =>
+          combo.some(medalKey => medalKey.startsWith(selectedYm))
+        );
+
+        if (newDokCombinations.length > 0) {
+          // 포함된 모든 조합의 반 이름 추출 (중복 제거)
+          const allUsedCrews = new Set();
+          newDokCombinations.forEach(combo => {
+            combo.forEach(key => {
+              const crewName = key.split('_')[1] || (medals[key] === 'gold' ? '고급반' : medals[key] === 'silver' ? '중급반' : '초급반');
+              allUsedCrews.add(crewName);
+            });
+          });
+
+          monthlyDokAchievers.push(`${u.name || u.uid}: ${Array.from(allUsedCrews).join(', ')}`);
+        }
+      }
+
+      const totalDok = calculateDokStatus(medals).totalDok;
+      if (totalDok >= 1) {
+        yearlyDokUsers.push({ name: u.name || u.uid, dok: totalDok });
+      }
+
+      const dokStatus = calculateDokStatus(medals);
+      const rem = dokStatus.remaining;
+      const fragments = [];
+      Object.entries(rem).forEach(([cName, count]) => {
+        if (count > 0) fragments.push(`${cName}(${count}개)`);
+      });
+      if (fragments.length > 0) {
+        remainingFragments.push(`${u.name || u.uid}: ${fragments.join(', ')}`);
+      }
+    });
+
+    yearlyDokUsers.sort((a, b) => b.dok - a.dok || String(a.name).localeCompare(String(b.name), 'ko'));
+    const yearlyFormatted = yearlyDokUsers.map(y => `${y.name}(${y.dok}독)`);
+
+    // 완주자 출력 포맷: 반별로 이름 나열
+    let totalFinishers = 0;
+    const monthlyFinishersFormatted = Object.entries(finishersByCrew)
+      .filter(([_, names]) => names.length > 0)
+      .map(([crew, names]) => {
+        totalFinishers += names.length;
+        return `[${crew}] ${names.length}명: ${names.join(', ')}`;
+      });
+
+    remainingFragments.sort((a, b) => a.localeCompare(b, 'ko')); // 이름순 정렬
+
+    return {
+      monthlyFinishers: monthlyFinishersFormatted,
+      totalFinishers,
+      monthlyDokAchievers,
+      yearlyDokUsers: yearlyFormatted,
+      remainingFragments
+    };
+  }, [users, selectedYm]);
+
+  return (
+    <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, background: '#FFFFFF', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }}>
+      <h3 style={{ marginBottom: 8, color: '#1D3557' }}>🔍 조건별 명단 검색 및 출력</h3>
+      <p style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>달별 완주자 및 1독자, 누적 현황을 손쉽게 확인하세요.<br />버튼을 눌러 각 명단을 확인할 수 있습니다.</p>
+
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center' }}>
+        <input
+          type="month"
+          value={selectedYm}
+          onChange={(e) => setSelectedYm(e.target.value)}
+          style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 8, marginRight: 8, outline: 'none' }}
+        />
+        <span style={{ fontSize: 13, color: '#666', fontWeight: 'bold' }}>기준 월 변경</span>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => setActiveTab('monthly_finishers')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_finishers' ? '#0071E3' : '#f1f1f1', color: activeTab === 'monthly_finishers' ? '#fff' : '#333' }}>*달별 완주자 명단</button>
+        <button onClick={() => setActiveTab('monthly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'monthly_dok' ? '#fff' : '#333' }}>*달별 1독자 명단</button>
+        <button onClick={() => setActiveTab('yearly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_dok' ? '#f1f1f1' : (activeTab === 'yearly_dok' ? '#0071E3' : '#f1f1f1'), color: activeTab === 'yearly_dok' ? '#fff' : '#333' }}>*올해 누적 1독자(다독순)</button>
+        <button onClick={() => setActiveTab('fragments')} style={{ ...tabBtnStyle, background: activeTab === 'fragments' ? '#0071E3' : '#f1f1f1', color: activeTab === 'fragments' ? '#fff' : '#333' }}>*남은 조각 현황</button>
+      </div>
+
+      <div style={{ padding: 16, background: '#f8f9fa', border: '1px solid #eee', borderRadius: 8, fontSize: 14, minHeight: 60, lineHeight: 1.6 }}>
+        {activeTab === 'monthly_finishers' && (
+          <div>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#1D3557' }}>📌 {selectedYm} 완주자 명단 (반별) {stats.totalFinishers > 0 && `- 총 ${stats.totalFinishers}명`}</div>
+            {stats.monthlyFinishers.length > 0 ? (
+              stats.monthlyFinishers.map((line, idx) => <div key={idx} style={{ marginBottom: 6 }}>{line}</div>)
+            ) : <div style={{ color: '#888' }}>해당 월 완주자가 없습니다.</div>}
+          </div>
+        )}
+        {activeTab === 'monthly_dok' && (
+          <div>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#1D3557' }}>📌 {selectedYm} 1독 달성자 명단</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>※ 이번 달 메달 획득으로 인해 완성된 과거 조합까지 포함표시.</div>
+            {stats.monthlyDokAchievers.length > 0 ? (
+              stats.monthlyDokAchievers.map((line, idx) => <div key={idx} style={{ marginBottom: 6, fontWeight: 'bold' }}>{line}</div>)
+            ) : <div style={{ color: '#888' }}>해당 월 1독 달성자가 없습니다.</div>}
+          </div>
+        )}
+        {activeTab === 'yearly_dok' && (
+          <div>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#1D3557' }}>📌 올해 전체 1독 이상 달성 명단 (다독순)</div>
+            {stats.yearlyDokUsers.length > 0 ? (
+              <div style={{ whiteSpace: 'pre-wrap' }}>{stats.yearlyDokUsers.join(', ')}</div>
+            ) : <div style={{ color: '#888' }}>1독 이상 달성자가 없습니다.</div>}
+          </div>
+        )}
+        {activeTab === 'fragments' && (
+          <div>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#1D3557' }}>📌 남은 조각 현황 (이름순)</div>
+            {stats.remainingFragments.length > 0 ? (
+              stats.remainingFragments.map((line, idx) => <div key={idx} style={{ marginBottom: 6 }}>{line}</div>)
+            ) : <div style={{ color: '#888' }}>조각을 보유한 단원이 없습니다.</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const tabBtnStyle = {
+  padding: '8px 16px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s'
+};
 
 export default function AdminPage({ user }) {
   const navigate = useNavigate();
@@ -1506,66 +1675,6 @@ export default function AdminPage({ user }) {
               </div>
             ))}
 
-            {/* 비활성(삭제) 명단 */}
-            <div style={{ marginTop: 18 }}>
-              <h4 style={{ marginBottom: 6 }}>비활성(삭제) 명단</h4>
-              {(!inactiveUsers || inactiveUsers.length === 0) ? (
-                <p style={{ fontSize: 12, color: '#666' }}>비활성 사용자가 없습니다.</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ borderBottom: '1px solid #ccc', textAlign: 'left', padding: 4 }}>이름</th>
-                      <th style={{ borderBottom: '1px solid #ccc', textAlign: 'center', padding: 4 }}>복구</th>
-                      <th style={{ borderBottom: '1px solid #ccc', textAlign: 'center', padding: 4 }}>완전삭제</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inactiveUsers.map((u) => (
-                      <tr key={u.uid}>
-                        <td style={{ borderBottom: '1px solid #eee', padding: 4 }}>
-                          {u.name || u.uid}
-                        </td>
-                        <td style={{ borderBottom: '1px solid #eee', padding: 4, textAlign: 'center' }}>
-                          <button
-                            type='button'
-                            onClick={() => handleConfirmRestore(u.uid, u.name)}
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: 8,
-                              border: 'none',
-                              background: '#457B9D',
-                              color: '#fff',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            복구
-                          </button>
-                        </td>
-                        <td style={{ borderBottom: '1px solid #eee', padding: 4, textAlign: 'center' }}>
-                          <button
-                            type='button'
-                            onClick={() => handleConfirmHardDelete(u.uid, u.name)}
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: 8,
-                              border: 'none',
-                              background: '#B71C1C',
-                              color: '#fff',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            완전삭제
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
           </div>
 
           {/* [3] 다음 달 반 수동 신청 등록 */}
@@ -1819,6 +1928,7 @@ export default function AdminPage({ user }) {
               </div>
             )}
           </div>
+          <AdminStatsSearchBlock users={users} />
         </div>
       )}
 
@@ -2075,6 +2185,69 @@ export default function AdminPage({ user }) {
                     </table>
                   )}
                 </>
+              )}
+            </div>
+
+            {/* 비활성(삭제) 명단 */}
+            <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #dee2e6' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <h4 style={{ margin: 0 }}>비활성(삭제) 명단</h4>
+              </div>
+              {(!inactiveUsers || inactiveUsers.length === 0) ? (
+                <p style={{ fontSize: 12, color: '#666' }}>비활성 사용자가 없습니다.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ borderBottom: '1px solid #ccc', textAlign: 'left', padding: 4 }}>이름</th>
+                      <th style={{ borderBottom: '1px solid #ccc', textAlign: 'center', padding: 4 }}>복구</th>
+                      <th style={{ borderBottom: '1px solid #ccc', textAlign: 'center', padding: 4 }}>완전삭제</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inactiveUsers.map((u) => (
+                      <tr key={u.uid}>
+                        <td style={{ borderBottom: '1px solid #eee', padding: 4 }}>
+                          {u.name || u.uid}
+                        </td>
+                        <td style={{ borderBottom: '1px solid #eee', padding: 4, textAlign: 'center' }}>
+                          <button
+                            type='button'
+                            onClick={() => handleConfirmRestore(u.uid, u.name)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: 8,
+                              border: 'none',
+                              background: '#457B9D',
+                              color: '#fff',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            복구
+                          </button>
+                        </td>
+                        <td style={{ borderBottom: '1px solid #eee', padding: 4, textAlign: 'center' }}>
+                          <button
+                            type='button'
+                            onClick={() => handleConfirmHardDelete(u.uid, u.name)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: 8,
+                              border: 'none',
+                              background: '#B71C1C',
+                              color: '#fff',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            완전삭제
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

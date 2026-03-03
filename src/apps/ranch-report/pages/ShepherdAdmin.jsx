@@ -449,6 +449,59 @@ function SundaySummaryView() {
     }
   }
 
+  async function downloadExcel() {
+    try {
+      const XLSX = await import('xlsx');
+      const wsData = [
+        ['목장', '재적', '주일예배', '새벽합계', '수요합계', '목장합계', '성경러닝', 'VIP합계', 'VIP명단', '예비목원', '주일결석자']
+      ];
+
+      tableRows.forEach(r => {
+        wsData.push([
+          r.groupName + (r.hasMeeting === false ? ' (모임없음)' : ''),
+          r.totalMembers,
+          r.sundayAttendance,
+          r.dawnTotal,
+          r.wedAttendance,
+          r.hasMeeting === false ? 0 : r.cellAttendance,
+          r.bibleReadingAttendance,
+          r.vipCount,
+          r.vipNames.length ? r.vipNames.join(', ') : '',
+          r.vipList || '',
+          r.absentees.length ? r.absentees.join(', ') : ''
+        ]);
+      });
+
+      wsData.push([
+        '합계',
+        totals.totalMembers,
+        totals.sundayAttendance,
+        totals.dawnTotal,
+        totals.wedAttendance,
+        totals.cellAttendance,
+        totals.bibleReadingAttendance,
+        totals.vipCount,
+        '', '', ''
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+      // 컬럼 너비 설정
+      ws['!cols'] = [
+        { wch: 15 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+        { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 30 }, { wch: 20 }, { wch: 30 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "주일결산");
+
+      const fileName = `주일결산_${getWeekLabel(sunday)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (e) {
+      alert('엑셀 파일 생성 실패: ' + e.message);
+    }
+  }
+
   return (
     <div style={box}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
@@ -458,11 +511,11 @@ function SundaySummaryView() {
           <div style={{ fontWeight: 800, color: '#1D1D1F', fontSize: 16 }}>{getWeekLabel(sunday)}</div>
           <button onClick={() => setSunday(shiftSunday(sunday, 1))} style={btn} className="no-print">▶</button>
           <button
-            onClick={() => window.print()}
+            onClick={downloadExcel}
             style={{ ...primaryBtn, background: '#34C759', color: '#fff', boxShadow: '0 4px 12px rgba(52, 199, 89, 0.25)', marginLeft: 8 }}
             className="no-print"
           >
-            🖨️ 문서 출력
+            🖨️ 엑셀 출력
           </button>
         </div>
       </div>
@@ -795,14 +848,18 @@ function PrayerScentAdminView() {
   }
 
   async function handleAdd() {
-    const name = newName.trim();
-    if (!name) return alert('이름을 입력하세요.');
+    // 쉼표나 띄어쓰기로 분리하여 여러 명 한 번에 처리
+    const names = newName.trim().split(/[, ]+/).filter(Boolean);
+    if (!names.length) return alert('이름을 입력하세요.');
     if (!newDate.startsWith(ym)) return alert('선택한 월에 해당하는 날짜를 입력하세요.');
 
-    // 사무실 신청자는 'office-' 접두어를 사용한 UID 생성
-    const officeUid = `office_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     try {
-      await applyPrayerScent(newDate, officeUid, name);
+      // 병렬로 모두 신청 추가 처리
+      const promises = names.map(name => {
+        const officeUid = `office_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        return applyPrayerScent(newDate, officeUid, name);
+      });
+      await Promise.all(promises);
       setNewName('');
     } catch (e) {
       alert('추가 실패: ' + e.message);
@@ -819,6 +876,38 @@ function PrayerScentAdminView() {
     }
   }
 
+  async function downloadExcel() {
+    try {
+      const XLSX = await import('xlsx');
+      const wsData = [
+        ['날짜', '인원', '신청자 이름']
+      ];
+
+      dateRows.forEach(date => {
+        if (!date.startsWith(ym)) return;
+        const applicants = Object.entries(data[date] || {}).map(([uid, info]) => ({ uid, ...info }));
+        const names = applicants.map(a => a.name + (a.uid.startsWith('office_') ? '(사무실)' : '')).join(', ');
+
+        wsData.push([
+          `${parseInt(date.slice(8), 10)}일`,
+          applicants.length,
+          names
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 60 }];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "기도의향");
+
+      const fileName = `기도의향_${ym}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (e) {
+      alert('엑셀 파일 생성 실패: ' + e.message);
+    }
+  }
+
   return (
     <div style={box}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -831,10 +920,10 @@ function PrayerScentAdminView() {
             style={{ ...miniInput, padding: '8px' }}
           />
           <button
-            onClick={() => window.print()}
+            onClick={downloadExcel}
             style={{ ...btn, background: '#10B981', color: '#fff', border: 'none' }}
           >
-            🖨️ 문서 출력
+            🖨️ 엑셀 출력
           </button>
         </div>
       </div>
@@ -842,7 +931,7 @@ function PrayerScentAdminView() {
       <div style={{
         marginTop: 16, padding: 16, background: '#F9FAFB', borderRadius: 12, border: '1px solid #E5E7EB'
       }} className="no-print">
-        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>🏢 사무실 직접 신청 기입</div>
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>🏢 사무실 직접 신청 기입 <span style={{ fontSize: 12, fontWeight: 500, color: '#6B7280' }}>(복수 입력 가능, 쉼표나 공백 구분)</span></div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
             type="date"
