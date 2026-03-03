@@ -677,6 +677,23 @@ export async function addManualApprovalWithHistory(crew, ymKey, userList) {
 
 
 // 해당 반 이번 달 승인 전체 삭제
+
+// ✅ 단일 사용자 승인 취소 및 소속 해제
+export async function removeIndividualApprovalWithHistory(crew, ymKey, uid, name) {
+  const db = getDatabase();
+  const cleanName = normalizeNameForKey(name);
+  if (!cleanName) return;
+
+  const updates = {};
+  updates[`approvals/${ymKey}/${crew}/${cleanName}`] = null;
+  
+  if (uid) {
+    updates[`applicationHistory/${ymKey}/${uid}/${crew}`] = null;
+    updates[`users/${uid}/crew`] = null;
+  }
+  return update(ref(db), updates);
+}
+
 export function clearCrewApprovals(crew, ymKey) {
   const path = ref(db, `approvals/${ymKey}/${crew}`);
   return set(path, null);

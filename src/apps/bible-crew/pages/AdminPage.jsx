@@ -42,6 +42,7 @@ import {
   cancelNextMonthApplication, // ✅ 취소 함수 추가
   addManualApprovalWithHistory, // ✅ 히스토리 포함 수동 승인
   clearCrewApprovals, // ✅ Added missing import
+  removeIndividualApprovalWithHistory,
   setAdminStatus, // 추가
   applyMonthlyAssignments, // 추가
   subscribeToAssignmentStatus, // 추가
@@ -630,6 +631,19 @@ export default function AdminPage({ user }) {
         console.error(e);
         alert('승인 모드 설정 중 오류가 발생했습니다.');
       });
+  }
+
+
+  async function handleRemoveIndividual(crew, uid, name) {
+    if (!window.confirm(`[${crew}] ${name}님을 승인 명단에서 정말 제외하시겠습니까?\n(해당 멤버는 미배정 상태가 됩니다.)`)) return;
+    try {
+      await removeIndividualApprovalWithHistory(crew, ymKey, uid, name);
+      // 만약 백업 기록(currentSnapshot)도 재조정하고 싶다면 [5]번 기능의 'handleApplyAssignments' 등을 업데이트해야 하겠지만,
+      // 일단 명단과 권한만 즉시 제거합니다.
+    } catch (e) {
+      console.error(e);
+      alert('제외 처리 중 오류가 발생했습니다.');
+    }
   }
 
   async function handleClearApproval(crew) {
@@ -1567,8 +1581,9 @@ export default function AdminPage({ user }) {
             }}
           >
             <h3 style={{ marginBottom: 8, color: '#1D3557' }}>[2] 승인 관리</h3>
-            <p style={{ fontSize: 12, marginBottom: 12, color: '#555' }}>
-              이번 달 각 반에 참여할 인원을 등록합니다. 승인된 사람만 해당 반 페이지로 입장할 수 있습니다.
+            <p style={{ fontSize: 12, marginBottom: 12, color: '#555', lineHeight: 1.4 }}>
+              이번 달 각 반에 참여할 인원을 등록합니다. 승인된 사람만 해당 반 페이지로 입장할 수 있습니다.<br />
+              <b>명단 옆 'x'를 눌러 제거하면 미배정 상태 및 달리기 현황에서 삭제되지만, 이번 달 개인 기록 데이터는 남아 있어 명단을 추가하면 언제든지 복구됩니다.</b>
             </p>
 
             {CREW_KEYS.map((crew) => (
@@ -1667,9 +1682,30 @@ export default function AdminPage({ user }) {
                 </div>
 
                 {approvalLists[crew] && approvalLists[crew].length > 0 && (
-                  <div style={{ fontSize: 12, color: '#333' }}>
-                    <span>이번 달 승인 인원: </span>
-                    {approvalLists[crew].join(', ')}
+                  <div style={{ fontSize: 12, color: '#333', marginTop: 8 }}>
+                    <div style={{ marginBottom: 6, fontWeight: 'bold' }}>이번 달 승인 인원 ({approvalLists[crew].length}명): </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {approvalLists[crew].map(name => {
+                        const uEntry = Object.entries(users || {}).find(([_, u]) =>
+                          (u.name || '').trim().replace(/\s+/g, '') === name.trim().replace(/\s+/g, '')
+                        );
+                        const uid = uEntry ? uEntry[0] : null;
+
+                        return (
+                          <span key={name} style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f3f5', padding: '4px 8px', borderRadius: 12, fontSize: 13, border: '1px solid #e2e8f0' }}>
+                            {name}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIndividual(crew, uid, name)}
+                              style={{ marginLeft: 6, background: '#ff4d4f', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 10, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                              title="명단에서 제외하기"
+                            >
+                              x
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
