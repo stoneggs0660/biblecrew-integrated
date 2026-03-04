@@ -56,7 +56,7 @@ import { getDailyBiblePortionByCrew } from '../utils/bibleUtils';
 import { getTodayCrewState } from '../utils/crewStatusUtils';
 import { calculateDokStatus, calculateDokStatusDetailed } from '../utils/dokUtils';
 
-function AdminStatsSearchBlock({ users }) {
+function AdminStatsSearchBlock({ users, approvalLists, currentYmKey }) {
   const [selectedYm, setSelectedYm] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -80,6 +80,7 @@ function AdminStatsSearchBlock({ users }) {
     const monthlyDokAchievers = [];
     const yearlyDokUsers = [];
     const remainingFragments = [];
+    const expectedDokAchievers = [];
 
     allUsers.forEach(u => {
       const medals = u.earnedMedals || {};
@@ -135,6 +136,51 @@ function AdminStatsSearchBlock({ users }) {
       if (fragments.length > 0) {
         remainingFragments.push(`${u.name || u.uid}: ${fragments.join(', ')}`);
       }
+
+      // 이번 달 1독 예상자 (approvalLists와 currentYmKey 기준)
+      if (approvalLists && currentYmKey) {
+        const cleanName = (u.name || '').trim().replace(/\s+/g, '');
+        const beforeDok = calculateDokStatusDetailed(medals).totalDok;
+        const virtualMedals = { ...medals };
+        let willEarnAny = false;
+
+        Object.entries(approvalLists).forEach(([crewName, names]) => {
+          if (Array.isArray(names) && names.some(n => n.trim().replace(/\s+/g, '') === cleanName)) {
+            let medalType = 'bronze';
+            if (crewName === '고급반') medalType = 'gold';
+            else if (crewName === '중급반') medalType = 'silver';
+            else if (crewName.includes('파노라마')) medalType = 'bronze';
+
+            // Generate virtual key
+            virtualMedals[`virtual_${crewName}_expected`] = medalType;
+            willEarnAny = true;
+          }
+        });
+
+        if (willEarnAny) {
+          const afterDetailed = calculateDokStatusDetailed(virtualMedals);
+          if (afterDetailed.totalDok > beforeDok) {
+            const newCombos = afterDetailed.usedMedals.filter(combo =>
+              combo.some(k => k.includes('_expected'))
+            );
+            if (newCombos.length > 0) {
+              const usedCrews = new Set();
+              newCombos.forEach(combo => {
+                combo.forEach(k => {
+                  if (k.includes('_expected')) {
+                    const cName = k.split('_')[1];
+                    usedCrews.add(cName);
+                  } else {
+                    const cName = k.split('_')[1] || (virtualMedals[k] === 'gold' ? '고급반' : virtualMedals[k] === 'silver' ? '중급반' : '초급반');
+                    usedCrews.add(cName);
+                  }
+                });
+              });
+              expectedDokAchievers.push(`${u.name || u.uid}: ${Array.from(usedCrews).join(', ')}`);
+            }
+          }
+        }
+      }
     });
 
     yearlyDokUsers.sort((a, b) => b.dok - a.dok || String(a.name).localeCompare(String(b.name), 'ko'));
@@ -155,10 +201,11 @@ function AdminStatsSearchBlock({ users }) {
       monthlyFinishers: monthlyFinishersFormatted,
       totalFinishers,
       monthlyDokAchievers,
+      expectedDokAchievers,
       yearlyDokUsers: yearlyFormatted,
       remainingFragments
     };
-  }, [users, selectedYm]);
+  }, [users, selectedYm, approvalLists, currentYmKey]);
 
   return (
     <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, background: '#FFFFFF', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }}>
@@ -178,7 +225,8 @@ function AdminStatsSearchBlock({ users }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
         <button onClick={() => setActiveTab('monthly_finishers')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_finishers' ? '#0071E3' : '#f1f1f1', color: activeTab === 'monthly_finishers' ? '#fff' : '#333' }}>*달별 완주자 명단</button>
         <button onClick={() => setActiveTab('monthly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'monthly_dok' ? '#fff' : '#333' }}>*달별 1독자 명단</button>
-        <button onClick={() => setActiveTab('yearly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_dok' ? '#f1f1f1' : (activeTab === 'yearly_dok' ? '#0071E3' : '#f1f1f1'), color: activeTab === 'yearly_dok' ? '#fff' : '#333' }}>*올해 누적 1독자(다독순)</button>
+        <button onClick={() => setActiveTab('expected_dok')} style={{ ...tabBtnStyle, background: activeTab === 'expected_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'expected_dok' ? '#fff' : '#333' }}>*이번 달 1독 예상자</button>
+        <button onClick={() => setActiveTab('yearly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'yearly_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'yearly_dok' ? '#fff' : '#333' }}>*올해 누적 1독자(다독순)</button>
         <button onClick={() => setActiveTab('fragments')} style={{ ...tabBtnStyle, background: activeTab === 'fragments' ? '#0071E3' : '#f1f1f1', color: activeTab === 'fragments' ? '#fff' : '#333' }}>*남은 조각 현황</button>
       </div>
 
@@ -198,6 +246,15 @@ function AdminStatsSearchBlock({ users }) {
             {stats.monthlyDokAchievers.length > 0 ? (
               stats.monthlyDokAchievers.map((line, idx) => <div key={idx} style={{ marginBottom: 6, fontWeight: 'bold' }}>{line}</div>)
             ) : <div style={{ color: '#888' }}>해당 월 1독 달성자가 없습니다.</div>}
+          </div>
+        )}
+        {activeTab === 'expected_dok' && (
+          <div>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#1D3557' }}>📌 이번 달 1독 예상자 ({currentYmKey} 기준)</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>※ 이번 달([2]번 승인 명단) 배정된 반을 모두 완주했을 경우,<br />남은 조각 보관함 내용물과 합산해서 1독이 추가 완성될 사람들의 예상 조합입니다.</div>
+            {stats.expectedDokAchievers && stats.expectedDokAchievers.length > 0 ? (
+              stats.expectedDokAchievers.map((line, idx) => <div key={idx} style={{ marginBottom: 6, fontWeight: 'bold', color: '#1D3557' }}>{line}</div>)
+            ) : <div style={{ color: '#888' }}>이번 달 예상 1독 당첨자가 없습니다.</div>}
           </div>
         )}
         {activeTab === 'yearly_dok' && (
@@ -1964,7 +2021,7 @@ export default function AdminPage({ user }) {
               </div>
             )}
           </div>
-          <AdminStatsSearchBlock users={users} />
+          <AdminStatsSearchBlock users={users} approvalLists={approvalLists} currentYmKey={ymKey} />
         </div>
       )}
 
