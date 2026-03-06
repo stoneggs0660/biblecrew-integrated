@@ -88,8 +88,6 @@ export default function AppSelect({ user, onLogout }) {
         const isReported = !!myData?.isPersonalReported;
         const isSubmitted = !!report?.submittedAt;
 
-        // 1. 본인이 보고를 완료했고(isReported)
-        // 2. 혹은 목자가 교회에 최종 제출을 완료했다면(isSubmitted) 
         // 배지가 사라집니다. 즉, 둘 다 아닐 때만 '작성 대기'가 유지됩니다.
         return !isReported && !isSubmitted;
     }, [report, groupId, memberKey, isFetchingGroup, isFetchingReport]);
@@ -261,14 +259,15 @@ export default function AppSelect({ user, onLogout }) {
                                 right: window.innerWidth < 480 ? 10 : 16,
                                 background: '#FEF2F2',
                                 color: '#DC2626',
-                                padding: '4px 8px',
+                                padding: '4px 10px',
                                 borderRadius: 100,
-                                fontSize: 10,
+                                fontSize: window.innerWidth < 480 ? 10 : 12,
                                 fontWeight: 800,
                                 border: '1px solid #FCA5A5',
-                                zIndex: 10
+                                zIndex: 10,
+                                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.15)',
                             }}>
-                                작성 대기
+                                ⚠️ 똑똑! 보고를 기다려요
                             </div>
                         )}
                         <div style={{

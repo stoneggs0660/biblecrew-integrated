@@ -211,7 +211,7 @@ export default function ShepherdPersonal({ user }) {
                                     disabled={isLocked}
                                 />
                                 <CheckBadge
-                                    label="목장모임"
+                                    label={<><span style={{ display: 'block' }}>목장</span><span style={{ display: 'block' }}>(오후예배)</span></>}
                                     checked={!!myData?.cell}
                                     onChange={(v) => patchMyData({ cell: v })}
                                     color="#F0FDF4" textColor="#16A34A"
@@ -358,9 +358,10 @@ function CheckBadge({ label, checked, onChange, color, textColor, disabled }) {
                 border: checked ? `6px solid ${textColor}` : '2px solid #CBD5E1',
                 background: '#fff',
                 boxSizing: 'border-box',
-                transition: 'border 0.25s'
+                transition: 'border 0.25s',
+                margin: '0 auto' // Ensure it centers horizontally
             }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: checked ? textColor : '#64748B' }}>{label}</span>
+            <span style={{ fontSize: typeof label === 'string' && label.length > 4 ? 12 : 13, fontWeight: 700, color: checked ? textColor : '#64748B', whiteSpace: 'nowrap', letterSpacing: '-0.5px', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
         </div>
     );
 }

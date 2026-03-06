@@ -250,7 +250,7 @@ export default function ShepherdWrite({ user }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
             <Stat label='재적' value={meta.totalMembers} />
             <Stat label='주일예배' value={meta.sundayAttendance} />
-            <Stat label='목장모임' value={meta.cellAttendance} />
+            <Stat label='목장(오후예배)' value={meta.cellAttendance} />
             <Stat label='새벽합계' value={meta.dawnTotal} />
             <Stat label='수요' value={meta.wedAttendance} />
             <Stat label='러닝크루' value={meta.bibleReadingAttendance} />
@@ -339,7 +339,7 @@ export default function ShepherdWrite({ user }) {
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
                       <CheckBadge label="주일" checked={!!row.sunday} onChange={(v) => patchMember(sunday, groupId, row.key, { sunday: v })} color="#E3F2FD" textColor="#0D47A1" disabled={submitted} />
-                      <CheckBadge label={hasMeeting ? "목장" : "모임없음"} checked={!!row.cell} onChange={(v) => hasMeeting && patchMember(sunday, groupId, row.key, { cell: v })} color="#E8F5E9" textColor="#1B5E20" disabled={!hasMeeting || submitted} />
+                      <CheckBadge label={hasMeeting ? <><span style={{ display: 'block' }}>목장</span><span style={{ display: 'block' }}>(오후예배)</span></> : "모임없음"} checked={!!row.cell} onChange={(v) => hasMeeting && patchMember(sunday, groupId, row.key, { cell: v })} color="#E8F5E9" textColor="#1B5E20" disabled={!hasMeeting || submitted} />
                       <CheckBadge label="수요" checked={!!row.wed} onChange={(v) => patchMember(sunday, groupId, row.key, { wed: v })} color="#FFF3E0" textColor="#E65100" disabled={submitted} />
                       <CheckBadge label="러닝" checked={!!row.bibleReading} onChange={(v) => patchMember(sunday, groupId, row.key, { bibleReading: v })} color="#F3E5F5" textColor="#7B1FA2" disabled={submitted} />
                     </div>
@@ -434,7 +434,7 @@ export default function ShepherdWrite({ user }) {
                   <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
                     <Th>이름</Th>
                     <Th>주일</Th>
-                    <Th>목장</Th>
+                    <Th>목장<br />(오후예배)</Th>
                     <Th>수요</Th>
                     <Th>새벽</Th>
                     <Th>러닝</Th>
@@ -570,7 +570,7 @@ function patchMember(sunday, groupId, memberKey, patch) {
 function Stat({ label, value, disabled }) {
   return (
     <div style={{ ...statBox, opacity: disabled ? 0.5 : 1 }}>
-      <div style={{ color: '#86868B', fontSize: 12, fontWeight: 700 }}>{label}</div>
+      <div style={{ color: '#86868B', fontSize: label?.length > 4 ? 10 : 12, fontWeight: 700, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{label}</div>
       <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800, color: '#1D1D1F' }}>{value}</div>
     </div>
   );
@@ -643,9 +643,10 @@ function CheckBadge({ label, checked, onChange, color, textColor, disabled }) {
         width: 16, height: 16, borderRadius: '50%',
         border: checked ? `5px solid ${textColor}` : '2px solid #9CA3AF',
         background: '#fff',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        flexShrink: 0 // Prevent circle from shrinking if text is long
       }} />
-      <span style={{ fontSize: 13, fontWeight: 800, color: checked ? textColor : '#4B5563' }}>{label}</span>
+      <span style={{ fontSize: typeof label === 'string' && label.length > 5 ? 10 : 13, fontWeight: 800, color: checked ? textColor : '#4B5563', whiteSpace: 'nowrap', letterSpacing: '-0.5px', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
     </div>
   );
 }
