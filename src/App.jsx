@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import AppSelect from './pages/AppSelect';
+import PassionWeek from './pages/PassionWeek';
 const ShepherdApp = React.lazy(() => import('./apps/ranch-report/ShepherdApp'));
 const BibleCrewApp = React.lazy(() => import('./apps/bible-crew/BibleCrewApp'));
 
@@ -41,6 +42,7 @@ export default function App() {
                     <Route path="/" element={<Navigate to={user ? "/select" : "/login"} replace />} />
                     <Route path="/login" element={!user ? <Login onLogin={handleLogin} /> : <Navigate to="/select" replace />} />
                     <Route path="/select" element={user ? <AppSelect user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+                    <Route path="/passion-week" element={user ? <PassionWeek user={user} /> : <Navigate to="/login" replace />} />
 
                     {/* Lazy-loaded Apps */}
                     <Route path="/shepherd/*" element={user ? <ShepherdApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />

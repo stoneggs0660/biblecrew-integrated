@@ -167,7 +167,7 @@ export default function AppSelect({ user, onLogout }) {
                         background: '#FFFFFF',
                         borderRadius: 16,
                         padding: '16px 20px',
-                        marginBottom: 30,
+                        marginBottom: 16,
                         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
                         borderLeft: '4px solid #0071E3',
                         display: 'flex',
@@ -181,7 +181,33 @@ export default function AppSelect({ user, onLogout }) {
                     </div>
                 )}
 
-                {/* Compact Grid Layout */}
+                {/* Passion Week Banner */}
+                <div
+                    onClick={() => navigate('/passion-week')}
+                    style={{
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        marginBottom: 30,
+                        borderRadius: 16,
+                        boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+                        background: '#f8f8f8',
+                        width: '100%'
+                    }}
+                >
+                    {/* 최종 고화질 배너 이미지 적용 */}
+                    <img 
+                        src="/passion-banner-final.png" 
+                        alt="Passion Week" 
+                        style={{ 
+                            width: '100%', 
+                            height: 'auto',
+                            display: 'block'
+                        }} 
+                    />
+                </div>
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -454,6 +480,7 @@ export default function AppSelect({ user, onLogout }) {
                             </div>
                         </div>
                     )}
+                </div>
 
                     {isPrayerScentModalOpen && (
                         <PrayerScentModal
@@ -463,9 +490,7 @@ export default function AppSelect({ user, onLogout }) {
                             onClose={() => setIsPrayerScentModalOpen(false)}
                         />
                     )}
-                </div>
             </div>
-        </div >
+        </div>
     );
 }
-

@@ -10,6 +10,13 @@
           "biblecrew-e14f3"
         ]
       }
+    },
+    "biblecrew-dev": {
+      "hosting": {
+        "prod": [
+          "biblecrew-dev"
+        ]
+      }
     }
   },
   "etags": {}
