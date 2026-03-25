@@ -41,3 +41,40 @@ export function removePassionManualEntry(dateId, entryId) {
     const path = ref(db, `${BASE_PATH}/manual_entries/${dateId}/${entryId}`);
     return remove(path);
 }
+
+// 6. 관리자: 명단 노출/숨김 토글
+export function togglePassionVisibility(dateId, type, id, isHidden) {
+    const collection = type === 'checkin' ? 'checkins' : 'manual_entries';
+    const path = ref(db, `${BASE_PATH}/${collection}/${dateId}/${id}/hidden`);
+    return set(path, isHidden);
+}
+
+// 7. 날짜별 설정 (숨김 등) 구독
+export function subscribeToPassionDayConfigs(callback) {
+    const path = ref(db, `${BASE_PATH}/day_configs`);
+    return onValue(path, (snap) => callback(snap.val() || {}));
+}
+
+// 8. 관리자: 특정 날짜 전체 숨김 토글
+export function togglePassionDayVisibility(dateId, isHidden) {
+    const path = ref(db, `${BASE_PATH}/day_configs/${dateId}/hidden`);
+    return set(path, isHidden);
+}
+
+// 9. 관리자: 앱 체크인 삭제
+export function removePassionCheck(dateId, uid) {
+    const path = ref(db, `${BASE_PATH}/checkins/${dateId}/${uid}`);
+    return remove(path);
+}
+
+// 10. 설정 (흐름 시간 등) 구독
+export function subscribeToPassionSettings(callback) {
+    const path = ref(db, `${BASE_PATH}/settings`);
+    return onValue(path, (snap) => callback(snap.val() || {}));
+}
+
+// 11. 관리자: 흐름 시간 설정
+export function savePassionTickerDuration(duration) {
+    const path = ref(db, `${BASE_PATH}/settings/ticker_duration`);
+    return set(path, duration);
+}

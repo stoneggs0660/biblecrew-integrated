@@ -5,7 +5,13 @@ import {
     subscribeToPassionManualEntries,
     savePassionCheck,
     addPassionManualEntry,
-    removePassionManualEntry
+    removePassionManualEntry,
+    togglePassionVisibility,
+    subscribeToPassionDayConfigs,
+    togglePassionDayVisibility,
+    removePassionCheck,
+    subscribeToPassionSettings,
+    savePassionTickerDuration
 } from '../utils/passionSync';
 
 const PassionWeek = ({ user }) => {
@@ -15,6 +21,8 @@ const PassionWeek = ({ user }) => {
     const [isAdminOpen, setIsAdminOpen] = useState(false);
     const [adminDate, setAdminDate] = useState('d0330');
     const [manualName, setManualName] = useState('');
+    const [dayConfigs, setDayConfigs] = useState({});
+    const [settings, setSettings] = useState({ ticker_duration: 16 });
 
     const daysData = [
         { id: 'd0330', label: '3.30(월)' },
@@ -30,9 +38,13 @@ const PassionWeek = ({ user }) => {
     useEffect(() => {
         const unsubCheck = subscribeToPassionChecks(setCheckins);
         const unsubManual = subscribeToPassionManualEntries(setManualEntries);
+        const unsubConfigs = subscribeToPassionDayConfigs(setDayConfigs);
+        const unsubSettings = subscribeToPassionSettings(setSettings);
         return () => {
             unsubCheck();
             unsubManual();
+            unsubConfigs();
+            unsubSettings();
         };
     }, []);
 
@@ -69,8 +81,15 @@ const PassionWeek = ({ user }) => {
     // 흐르는 명단 데이터 생성 (월/ 이름1, 이름2 ... 화/ 이름1 ...)
     const tickerText = useMemo(() => {
         const items = daysData.map(day => {
-            const dayCheckins = Object.values(checkins[day.id] || {}).map(u => u.name);
-            const dayManuals = Object.values(manualEntries[day.id] || {}).map(m => m.name);
+            // 해당 날짜 자체가 숨김 처리되어 있는지 확인
+            if (dayConfigs[day.id]?.hidden) return null;
+
+            const dayCheckins = Object.values(checkins[day.id] || {})
+                .filter(u => !u.hidden)
+                .map(u => u.name);
+            const dayManuals = Object.values(manualEntries[day.id] || {})
+                .filter(m => !m.hidden)
+                .map(m => m.name);
             const allNames = [...dayCheckins, ...dayManuals];
             if (allNames.length === 0) return null;
             return `${day.label}/ ${allNames.join(' ')}`;
@@ -78,7 +97,7 @@ const PassionWeek = ({ user }) => {
 
         if (items.length === 0) return '함께 기도하고 동행하는 분들을 기다립니다...';
         return items.join(' | ');
-    }, [checkins, manualEntries]);
+    }, [checkins, manualEntries, dayConfigs]);
 
     return (
         <div className="passion-week-container">
@@ -260,17 +279,76 @@ const PassionWeek = ({ user }) => {
                 .ticker-move {
                     display: inline-block;
                     white-space: nowrap;
-                    animation: marquee 12s linear infinite;
+                    /* animation duration is set via inline style */
+                    animation-name: marquee;
+                    animation-timing-function: linear;
+                    animation-iteration-count: infinite;
                     font-weight: 700;
                     color: #ffffff; /* 가독성 좋은 화이트 */
                     font-size: 1rem;
-                    padding-left: 100%;
+                    padding-left: 480px; /* 컨테이너 너비만큼 여백을 주어 오른쪽에서 나타나게 함 */
                     text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+                    will-change: transform;
                 }
                 @keyframes marquee {
-                    0% { transform: translate(0, 0); }
-                    100% { transform: translate(-100%, 0); }
+                    0% { transform: translateX(0); }
+                    100% { transform: translateX(-100%); }
                 }
+
+                .btn-visibility {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    padding: 4px;
+                    display: flex;
+                    align-items: center;
+                    opacity: 0.6;
+                    transition: opacity 0.2s;
+                }
+                .btn-visibility:hover { opacity: 1; }
+                .btn-visibility.hidden { color: #ef4444; opacity: 1; }
+                
+                .day-visibility-toggle {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    background: #f8f8f8;
+                    padding: 10px 15px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    border: 1px solid #eee;
+                }
+                .day-visibility-toggle span {
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #333;
+                }
+                .toggle-switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 44px;
+                    height: 24px;
+                }
+                .toggle-switch input { opacity: 0; width: 0; height: 0; }
+                .slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-color: #ccc;
+                    transition: .4s;
+                    border-radius: 24px;
+                }
+                .slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 18px; width: 18px;
+                    left: 3px; bottom: 3px;
+                    background-color: white;
+                    transition: .4s;
+                    border-radius: 50%;
+                }
+                input:checked + .slider { background-color: var(--p-green); }
+                input:checked + .slider:before { transform: translateX(20px); }
 
                 /* Admin Modal */
                 .modal-overlay {
@@ -429,7 +507,7 @@ const PassionWeek = ({ user }) => {
                     <div className="ticker-container">
                         <div className="ticker-title">&lt;고난주간 5일간 동행하는 분들&gt;</div>
                         <div className="ticker-wrap">
-                            <div className="ticker-move">
+                            <div className="ticker-move" style={{ animationDuration: `${settings.ticker_duration || 16}s` }}>
                                 {tickerText}
                             </div>
                         </div>
@@ -447,6 +525,25 @@ const PassionWeek = ({ user }) => {
                             <button onClick={() => setIsAdminOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20 }}>✕</button>
                         </div>
 
+                        <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '12px', marginBottom: 20 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: '#475569' }}>명단 흐름 시간 (속도)</span>
+                                <span style={{ fontSize: 14, fontWeight: 900, color: '#0071E3' }}>{settings.ticker_duration || 16}초</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="5" 
+                                max="60" 
+                                value={settings.ticker_duration || 16} 
+                                onChange={(e) => savePassionTickerDuration(parseInt(e.target.value))}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
+                                <span>빠름 (5s)</span>
+                                <span>느림 (60s)</span>
+                            </div>
+                        </div>
+
                         <div className="admin-date-select">
                             {daysData.map(day => (
                                 <button 
@@ -457,6 +554,18 @@ const PassionWeek = ({ user }) => {
                                     {day.label}
                                 </button>
                             ))}
+                        </div>
+
+                        <div className="day-visibility-toggle">
+                            <span>{daysData.find(d => d.id === adminDate)?.label} 명단 전체 노출</span>
+                            <label className="toggle-switch">
+                                <input 
+                                    type="checkbox" 
+                                    checked={!dayConfigs[adminDate]?.hidden} 
+                                    onChange={(e) => togglePassionDayVisibility(adminDate, !e.target.checked)}
+                                />
+                                <span className="slider"></span>
+                            </label>
                         </div>
 
                         <form className="name-input-group" onSubmit={handleAddManualEntry}>
@@ -474,14 +583,53 @@ const PassionWeek = ({ user }) => {
                             {/* App Checkins */}
                             {Object.entries(checkins[adminDate] || {}).map(([uid, u]) => (
                                 <div key={uid} className="name-item">
-                                    <span>{u.name} (앱)</span>
-                                    <span style={{ color: '#aaa', fontSize: 11 }}>자동연동</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <button 
+                                            className={`btn-visibility ${u.hidden ? 'hidden' : ''}`}
+                                            onClick={() => togglePassionVisibility(adminDate, 'checkin', uid, !u.hidden)}
+                                            title={u.hidden ? "숨김 처리됨 (클릭시 노출)" : "노출 중 (클릭시 숨김)"}
+                                        >
+                                            {u.hidden ? (
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                            ) : (
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                            )}
+                                        </button>
+                                        <span style={{ textDecoration: u.hidden ? 'line-through' : 'none', color: u.hidden ? '#aaa' : 'inherit' }}>
+                                            {u.name} (앱)
+                                        </span>
+                                    </div>
+                                    <button 
+                                        className="btn-del" 
+                                        onClick={() => {
+                                            if (window.confirm(`${u.name}님의 체크인 기록을 삭제하시겠습니까?`)) {
+                                                removePassionCheck(adminDate, uid);
+                                            }
+                                        }}
+                                    >
+                                        삭제
+                                    </button>
                                 </div>
                             ))}
                             {/* Manual Entries */}
                             {Object.entries(manualEntries[adminDate] || {}).map(([eid, m]) => (
                                 <div key={eid} className="name-item">
-                                    <span>{m.name}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <button 
+                                            className={`btn-visibility ${m.hidden ? 'hidden' : ''}`}
+                                            onClick={() => togglePassionVisibility(adminDate, 'manual', eid, !m.hidden)}
+                                            title={m.hidden ? "숨김 처리됨 (클릭시 노출)" : "노출 중 (클릭시 숨김)"}
+                                        >
+                                            {m.hidden ? (
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                            ) : (
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                            )}
+                                        </button>
+                                        <span style={{ textDecoration: m.hidden ? 'line-through' : 'none', color: m.hidden ? '#aaa' : 'inherit' }}>
+                                            {m.name}
+                                        </span>
+                                    </div>
                                     <button className="btn-del" onClick={() => removePassionManualEntry(adminDate, eid)}>삭제</button>
                                 </div>
                             ))}
