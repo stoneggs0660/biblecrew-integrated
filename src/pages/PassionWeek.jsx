@@ -126,7 +126,7 @@ const PassionWeek = ({ user }) => {
                     flex-direction: column;
                     position: relative;
                     box-shadow: 0 0 50px rgba(0,0,0,0.1);
-                    background-image: url('passion-bg-v2.jpg'); 
+                    background-image: url('/passion-bg-v2.jpg'); 
                     background-size: cover;
                     background-position: center top;
                     background-repeat: no-repeat;

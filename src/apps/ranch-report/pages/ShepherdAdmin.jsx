@@ -11,7 +11,7 @@ export default function ShepherdAdmin({ user }) {
   const [adminOk, setAdminOk] = useState(() => sessionStorage.getItem('shepherd_admin_ok') === '1');
   const [pwd, setPwd] = useState('');
   const [pwdError, setPwdError] = useState('');
-  const [view, setView] = useState('groups'); // groups|summary|prayers|notice|mainNotice|settlement
+  const [view, setView] = useState('groups'); // groups|summary|prayers|notice|mainNotice|settlement|seniorPastorReport
 
   useEffect(() => {
     setAdminOk(sessionStorage.getItem('shepherd_admin_ok') === '1');
@@ -82,6 +82,7 @@ export default function ShepherdAdmin({ user }) {
           <button onClick={() => setView('settlement')} style={tabBtn(view === 'settlement')}>목장·개인결산</button>
           <button onClick={() => setView('prayers')} style={tabBtn(view === 'prayers')}>보고/기도제목</button>
           <button onClick={() => setView('prayerScent')} style={tabBtn(view === 'prayerScent')}>기도의 향</button>
+          <button onClick={() => setView('seniorPastorReport')} style={{ ...tabBtn(view === 'seniorPastorReport'), background: view === 'seniorPastorReport' ? '#5856D6' : 'transparent', color: view === 'seniorPastorReport' ? '#fff' : '#86868B' }}>담임목사 보고</button>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#D1E9FF', padding: 4, borderRadius: 16 }}>
           <button onClick={() => setView('notice')} style={tabBtnBlue(view === 'notice')}>공지(목자보고서)</button>
@@ -97,6 +98,7 @@ export default function ShepherdAdmin({ user }) {
         {view === 'prayerScent' ? <PrayerScentAdminView /> : null}
         {view === 'notice' ? <NoticeView /> : null}
         {view === 'mainNotice' ? <MainNoticeView /> : null}
+        {view === 'seniorPastorReport' ? <SeniorPastorReportView /> : null}
       </div>
     </div>
   );
@@ -1101,6 +1103,13 @@ const input = {
   fontSize: 15,
 };
 
+const textareaStyle = {
+  ...input,
+  minHeight: 100,
+  resize: 'vertical',
+  fontFamily: 'inherit',
+};
+
 const miniInput = {
   padding: '10px 14px',
   borderRadius: 12,
@@ -1180,3 +1189,295 @@ const modalContentStyle = {
 
 // confirm 사용을 위해 eslint 무시
 /* eslint-disable no-restricted-globals */
+
+function SeniorPastorReportView() {
+  const [sunday, setSunday] = React.useState(getSundayOfWeek(new Date()));
+  const prevSunday = shiftSunday(sunday, -1);
+
+  const [groups, setGroups] = React.useState({});
+  const [reports, setReports] = React.useState({});
+  const [clergReport, setClergReport] = React.useState({});
+  const [clergLists, setClergLists] = React.useState({});
+  const [prevClergLists, setPrevClergLists] = React.useState({});
+  
+  const [persistentAbsenteeReasons, setPersistentAbsenteeReasons] = React.useState({});
+  const [persistentVipRemarks, setPersistentVipRemarks] = React.useState({});
+  const [persistentPreMemberRemarks, setPersistentPreMemberRemarks] = React.useState({});
+  const [persistentPatients, setPersistentPatients] = React.useState({});
+
+  React.useEffect(() => {
+    const unsub = subscribeToShepherdGroups((val) => setGroups(val || {}));
+    return () => unsub?.();
+  }, []);
+
+  React.useEffect(() => {
+    const db2 = getDatabase();
+    const unsubs = [
+      onValue(ref(db2, `shepherd/reports/${sunday}`), (s) => setReports(s.val() || {})),
+      onValue(ref(db2, `shepherd/clerg_reports/${sunday}`), (s) => setClergReport(s.val() || {})),
+      onValue(ref(db2, `shepherd/senior_report/${sunday}/lists`), (s) => setClergLists(s.val() || {})),
+      onValue(ref(db2, `shepherd/senior_report/${prevSunday}/lists`), (s) => setPrevClergLists(s.val() || {})),
+      
+      onValue(ref(db2, `shepherd/senior_report/persistent/patients`), (s) => setPersistentPatients(s.val() || {})),
+      onValue(ref(db2, `shepherd/senior_report/persistent/absentee_reasons`), (s) => setPersistentAbsenteeReasons(s.val() || {})),
+      onValue(ref(db2, `shepherd/senior_report/persistent/vip_remarks`), (s) => setPersistentVipRemarks(s.val() || {})),
+      onValue(ref(db2, `shepherd/senior_report/persistent/pre_member_remarks`), (s) => setPersistentPreMemberRemarks(s.val() || {})),
+    ];
+    return () => unsubs.forEach(u => u?.());
+  }, [sunday, prevSunday]);
+
+
+
+  const list = React.useMemo(() => {
+    const all = Object.entries(groups || {}).map(([id, g]) => ({ id, ...(g || {}) }));
+    all.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return all;
+  }, [groups]);
+
+  const tableRows = React.useMemo(() => {
+    return list.map((g) => {
+      const r = reports[g.id] || null;
+      const meta = r?.meta || {};
+      return {
+        groupName: g.name || '(이름없음)',
+        totalMembers: parseInt(meta.totalMembers || 0, 10) || 0,
+        sundayAttendance: parseInt(meta.sundayAttendance || 0, 10) || 0,
+        dawnTotal: parseInt(meta.dawnTotal || 0, 10) || 0,
+        wedAttendance: parseInt(meta.wedAttendance || 0, 10) || 0,
+        cellAttendance: r?.hasMeeting !== false ? parseInt(meta.cellAttendance || 0, 10) || 0 : 0,
+        bibleReadingAttendance: parseInt(meta.bibleReadingAttendance || 0, 10) || 0,
+        vipCount: parseInt(meta.vipCount || 0, 10) || 0,
+        vipNames: Array.isArray(meta.vipNames) ? meta.vipNames : [],
+        absentees: Array.isArray(meta.absentees) ? meta.absentees : [],
+        preMembers: r?.vipList || '',
+        reportNote: r?.reportNote || '',
+        prayerNote: r?.prayerNote || '',
+        memberPrayers: r?.members ? Object.values(r.members).filter(m => m && typeof m === 'object').map(m => ({ name: m.name || '목원', prayer: m.prayer })).filter(m => m.prayer) : [],
+        id: g.id,
+      };
+    });
+  }, [list, reports]);
+
+  const totals = React.useMemo(() => {
+    return tableRows.reduce((acc, r) => {
+      acc.totalMembers += r.totalMembers;
+      acc.sundayAttendance += r.sundayAttendance;
+      acc.dawnTotal += r.dawnTotal;
+      acc.wedAttendance += r.wedAttendance;
+      acc.cellAttendance += r.cellAttendance;
+      acc.bibleReadingAttendance += r.bibleReadingAttendance;
+      acc.vipCount += r.vipCount;
+      return acc;
+    }, { totalMembers: 0, sundayAttendance: 0, dawnTotal: 0, wedAttendance: 0, cellAttendance: 0, bibleReadingAttendance: 0, vipCount: 0 });
+  }, [tableRows]);
+
+  const updateClergField = (field, val) => update(ref(getDatabase(), `shepherd/clerg_reports/${sunday}`), { [field]: val });
+  const updateAbsenteeReason = (groupId, name, reason) => update(ref(getDatabase(), `shepherd/senior_report/persistent/absentee_reasons/${groupId}`), { [name]: reason });
+  const updateVipRemark = (groupId, name, remark) => update(ref(getDatabase(), `shepherd/senior_report/persistent/vip_remarks/${groupId}`), { [name]: remark });
+  const updatePreMemberRemark = (groupId, name, remark) => update(ref(getDatabase(), `shepherd/senior_report/persistent/pre_member_remarks/${groupId}`), { [name]: remark });
+  const updateEntryByPath = (basePath, id, data) => update(ref(getDatabase(), `${basePath}/${id}`), data);
+  const removeEntryByPath = (basePath, id) => update(ref(getDatabase(), basePath), { [id]: null });
+  const addEntryByPath = (basePath) => updateEntryByPath(basePath, Date.now().toString(), { name: '', note: '' });
+  const copyPrevEntry = (category, id, entry) => updateEntryByPath(`shepherd/senior_report/${sunday}/lists/${category}`, id, { ...entry, hidden: null });
+  const ignoreSuggestion = (category, id) => update(ref(getDatabase(), `shepherd/senior_report/${sunday}/lists/${category}/${id}`), { hidden: true });
+
+  return (
+    <div style={{ ...box, padding: '30px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30, borderBottom: '1px solid #E5E5EA', paddingBottom: 20 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 24, fontWeight: 900, color: '#1D1D1F' }}>담임목사 보고</h3>
+          <div style={{ marginTop: 4, color: '#86868B', fontWeight: 600 }}>{getWeekLabel(sunday)} 주간 현황</div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => setSunday(shiftSunday(sunday, -1))} style={btn}>◀ 이전 주</button>
+          <button onClick={() => setSunday(shiftSunday(sunday, 1))} style={btn}>다음 주 ▶</button>
+        </div>
+      </div>
+
+      <Section title="1. 주일결산표">
+        <div style={{ overflowX: 'auto', borderRadius: 16, border: '1px solid #E5E5EA' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#F9F9FB', borderBottom: '1px solid #E5E5EA' }}>
+                <th style={th}>목장</th><th style={th}>재적</th><th style={th}>주일</th><th style={th}>새벽</th><th style={th}>수요</th><th style={th}>목장</th><th style={th}>러닝</th><th style={th}>VIP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((r, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #F2F2F7', background: idx % 2 === 0 ? '#fff' : '#FAFAFC' }}>
+                  <td style={{ ...td, fontWeight: 700 }}>{r.groupName}</td>
+                  <td style={td}>{r.totalMembers}</td><td style={td}>{r.sundayAttendance}</td><td style={td}>{r.dawnTotal}</td>
+                  <td style={td}>{r.wedAttendance}</td><td style={td}>{r.cellAttendance}</td>
+                  <td style={td}>{r.bibleReadingAttendance}</td><td style={td}>{r.vipCount}</td>
+                </tr>
+              ))}
+              <tr style={{ background: '#EBF5FF', fontWeight: 900, color: '#007AFF' }}>
+                <td style={{ ...td, borderTop: '2px solid #007AFF' }}>합계</td>
+                <td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.totalMembers}</td><td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.sundayAttendance}</td>
+                <td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.dawnTotal}</td><td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.wedAttendance}</td>
+                <td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.cellAttendance}</td><td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.bibleReadingAttendance}</td>
+                <td style={{ ...td, borderTop: '2px solid #007AFF' }}>{totals.vipCount}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section title="2. 목장별 결석자 명단">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: 16 }}>
+          {tableRows.filter(r => r.absentees.length > 0).map((r, idx) => (
+            <div key={idx} style={{ ...subBox, borderLeft: '4px solid #FF3B30' }}>
+              <div style={{ fontWeight: 800, marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{r.groupName}</span><span style={{ color: '#FF3B30', fontSize: 12 }}>{r.absentees.length}명 결석</span>
+              </div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {r.absentees.map((name, nIdx) => {
+                  const reason = persistentAbsenteeReasons[r.id]?.[name] || '';
+                  return (
+                    <div key={nIdx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ minWidth: 60, fontSize: 14, fontWeight: 700 }}>{name}</div>
+                      <input
+                        placeholder="결석 사유"
+                        style={{ ...miniInput, flex: 1, background: reason ? '#FFFEEB' : '#F5F5F7' }}
+                        value={reason}
+                        onChange={(e) => updateAbsenteeReason(r.id, name, e.target.value)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="3. 새가족부">
+        <div style={{ display: 'grid', gap: 30 }}>
+          <div style={subBox}>
+            <div style={{ fontWeight: 900, marginBottom: 15, color: '#5856D6', fontSize: 16 }}>● 목장별 vip(153전도, 목장에서 전도)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+              {tableRows.filter(r => r.vipNames.length > 0).map((r, idx) => (
+                <div key={idx} style={{ background: '#fff', padding: 12, borderRadius: 12, border: '1px solid #E5E5EA' }}>
+                  <div style={{ fontWeight: 800, color: '#5856D6', marginBottom: 8, fontSize: 13 }}>{r.groupName}</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {r.vipNames.map((name, vIdx) => (
+                      <div key={vIdx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ minWidth: 50, fontWeight: 700, fontSize: 13 }}>{name}</span>
+                        <input
+                          placeholder="비고"
+                          style={{ ...miniInput, flex: 1, fontSize: 12, padding: '6px 10px', background: persistentVipRemarks[r.id]?.[name] ? '#F9FAFB' : '#F5F5F7' }}
+                          value={persistentVipRemarks[r.id]?.[name] || ''}
+                          onChange={(e) => updateVipRemark(r.id, name, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={subBox}>
+            <div style={{ fontWeight: 900, marginBottom: 15, color: '#FF9500', fontSize: 16 }}>● 목장 예비목원 (매칭 후 생삶 미수료)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+              {tableRows.filter(r => r.preMembers).map((r, idx) => {
+                const names = r.preMembers.split(/[, ]+/).filter(Boolean);
+                return (
+                  <div key={idx} style={{ background: '#fff', padding: 12, borderRadius: 12, border: '1px solid #E5E5EA' }}>
+                    <div style={{ fontWeight: 800, color: '#FF9500', marginBottom: 8, fontSize: 13 }}>{r.groupName}</div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {names.map((name, vIdx) => (
+                        <div key={vIdx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ minWidth: 50, fontWeight: 700, fontSize: 13 }}>{name}</span>
+                          <input
+                            placeholder="비고"
+                            style={{ ...miniInput, flex: 1, fontSize: 12, padding: '6px 10px', background: persistentPreMemberRemarks[r.id]?.[name] ? '#F9FAFB' : '#F5F5F7' }}
+                            value={persistentPreMemberRemarks[r.id]?.[name] || ''}
+                            onChange={(e) => updatePreMemberRemark(r.id, name, e.target.value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {[{id:'new_family', title:'● 주일새가족 명단 (등록 및 방문자)', color: '#34C759'}, {id:'ministry_req', title:'● 목회요청 명단 (심방, 특별 기도제목)', color: '#007AFF'}, {id:'patients', title:'● 환우명단 (병원/상태)', color: '#FF3B30', isPersistent: true}].map(cat => {
+            const currentItems = cat.isPersistent ? persistentPatients : (clergLists[cat.id] || {});
+            const prevItems = cat.isPersistent ? {} : (prevClergLists[cat.id] || {});
+            const suggestions = !cat.isPersistent ? Object.entries(prevItems).filter(([id, entry]) => !currentItems[id] && !currentItems[id]?.hidden) : [];
+            const basePath = cat.isPersistent ? `shepherd/senior_report/persistent/patients` : `shepherd/senior_report/${sunday}/lists/${cat.id}`;
+
+            return (
+              <div key={cat.id} style={subBox}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                  <div style={{ fontWeight: 900, color: cat.color, fontSize: 16 }}>{cat.title}</div>
+                  <button onClick={() => addEntryByPath(basePath)} style={{ ...miniBtn, background: cat.color, color: '#fff' }}>+ 추가</button>
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {Object.entries(currentItems).filter(([_, entry]) => entry && !entry.hidden).map(([id, entry]) => (
+                    <div key={id} style={{ display: 'flex', gap: 10, background: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid #E5E5EA', alignItems: 'center' }}>
+                      <input style={{ ...miniInput, fontWeight: 900, width: 100 }} value={entry.name || ''} onChange={(e) => updateEntryByPath(basePath, id, { ...entry, name: e.target.value })} placeholder="이름" />
+                      <input style={{ ...miniInput, flex: 1 }} value={entry.note || ''} onChange={(e) => updateEntryByPath(basePath, id, { ...entry, note: e.target.value })} placeholder="비고" />
+                      <button onClick={() => removeEntryByPath(basePath, id)} style={{ border: 'none', background: 'none', color: '#FF3B30', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                    </div>
+                  ))}
+                  {!cat.isPersistent && suggestions.length > 0 && (
+                    <div style={{ marginTop: 10, borderTop: '1px dashed #E5E5EA', paddingTop: 10 }}>
+                      <div style={{ fontSize: 11, color: '#86868B', marginBottom: 8, fontWeight: 700 }}>[지난주 명단 제안]</div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {suggestions.map(([id, entry]) => (
+                          <div key={id} style={{ display: 'flex', gap: 10, background: '#F9FAFB', padding: '6px 12px', borderRadius: 10, border: '1px solid #F3F4F6', alignItems: 'center', opacity: 0.8 }}>
+                            <span style={{ fontWeight: 800, minWidth: 100, fontSize: 13 }}>{entry.name}</span>
+                            <span style={{ flex: 1, fontSize: 12 }}>{entry.note}</span>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button onClick={() => copyPrevEntry(cat.id, id, entry)} style={{ ...miniBtn, background: '#EBF5FF', color: '#007AFF' }}>복사</button>
+                              <button onClick={() => ignoreSuggestion(cat.id, id)} style={{ ...miniBtn, background: '#FFF5F5', color: '#FF3B30' }}>삭제</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      <Section title="4. 기도의 향 / 보고 및 기도제목">
+        <div style={{ display: 'grid', gap: 16 }}>
+          {tableRows.filter(r => r.reportNote || r.prayerNote || r.memberPrayers.length > 0).map((r, idx) => (
+            <div key={idx} style={{ ...subBox, borderLeft: '4px solid #34C759' }}>
+              <div style={{ fontWeight: 900, marginBottom: 10, fontSize: 16, borderBottom: '1px solid #F2F2F7', paddingBottom: 6 }}>{r.groupName} 목장</div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {r.reportNote && <div><div style={{ color: '#34C759', fontWeight: 800, fontSize: 12 }}>[보고사항]</div><div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{r.reportNote}</div></div>}
+                {r.prayerNote && <div><div style={{ color: '#007AFF', fontWeight: 800, fontSize: 12 }}>[목장기도제목]</div><div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{r.prayerNote}</div></div>}
+                {r.memberPrayers.length > 0 && <div><div style={{ color: '#8E8E93', fontWeight: 800, fontSize: 12 }}>[목원기도제목]</div>{r.memberPrayers.map((m, mIdx) => <div key={mIdx} style={{ fontSize: 13 }}><b>{m.name}:</b> {m.prayer}</div>)}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="5. 교역자 보고">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <textarea style={{ ...textareaStyle, border: '1px solid #E5E5EA' }} rows={6} value={clergReport.edu_dept || ''} onChange={(e) => updateClergField('edu_dept', e.target.value)} placeholder="교육부서 주요 보고사항" />
+          <textarea style={{ ...textareaStyle, border: '1px solid #E5E5EA' }} rows={6} value={clergReport.church_admin || ''} onChange={(e) => updateClergField('church_admin', e.target.value)} placeholder="교회행정 및 기타 보고사항" />
+        </div>
+      </Section>
+
+      <Section title="6. 담임목사 지시사항">
+        <textarea style={{ ...textareaStyle, border: '2px solid #1D1D1F', background: '#F9F9FB', minHeight: 150 }} value={clergReport.pastor_instructions || ''} onChange={(e) => updateClergField('pastor_instructions', e.target.value)} placeholder="지시사항 입력" />
+      </Section>
+
+      <div style={{ marginTop: 40, textAlign: 'center', color: '#86868B', fontSize: 13, borderTop: '1px solid #E5E5EA', paddingTop: 20 }}>모든 입력 사항은 자동으로 저장됩니다.</div>
+    </div>
+  );
+}
+
+
+function Section({ title, children }) { return <div style={{ marginTop: 24 }}><div style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{title}</div>{children}</div>; }
