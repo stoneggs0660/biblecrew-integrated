@@ -56,12 +56,61 @@ import { getDailyBiblePortionByCrew } from '../utils/bibleUtils';
 import { getTodayCrewState } from '../utils/crewStatusUtils';
 import { calculateDokStatus, calculateDokStatusDetailed } from '../utils/dokUtils';
 
-function AdminStatsSearchBlock({ users, approvalLists, currentYmKey }) {
+function AdminStatsSearchBlock({ users, currentYmKey }) {
   const [selectedYm, setSelectedYm] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [activeTab, setActiveTab] = useState('monthly_finishers'); // 탭 상태
+  const [activeTab, setActiveTab] = useState('monthly_finishers');
+  const [monthlyApprovals, setMonthlyApprovals] = useState({}); // 선택된 월의 배정 명단
+  const [manualName, setManualName] = useState(''); // 수동 추가 이름
+  const [manualCrew, setManualCrew] = useState('초급반'); // 수동 추가 반
+
+  // ✅ 선택된 월(selectedYm)의 배정 명단 실시간 구독
+  useEffect(() => {
+    const unsubs = [];
+    CREW_KEYS.forEach((crew) => {
+      const unsub = subscribeToCrewApprovals(crew, selectedYm, (data) => {
+        const names = data ? Object.keys(data) : [];
+        setMonthlyApprovals((prev) => ({
+          ...prev,
+          [crew]: names,
+        }));
+      });
+      if (typeof unsub === 'function') unsubs.push(unsub);
+    });
+    return () => {
+      unsubs.forEach((fn) => {
+        try { fn(); } catch (e) { }
+      });
+    };
+  }, [selectedYm]);
+
+  async function handleAddManualAssignment() {
+    const name = (manualName || '').trim().replace(/\s+/g, '');
+    if (!name) {
+      alert('배정할 이름을 입력해주세요.');
+      return;
+    }
+
+    // 이름으로 UID 찾기
+    const userEntry = Object.entries(users || {}).find(([_, u]) => (u.name || '').trim().replace(/\s+/g, '') === name);
+    const uid = userEntry ? userEntry[0] : null;
+
+    if (!uid) {
+      alert(`'${name}' 사용자를 찾을 수 없습니다. 정확한 실명을 입력해주세요.`);
+      return;
+    }
+
+    try {
+      await addManualApprovalWithHistory(manualCrew, selectedYm, [{ name, uid }]);
+      alert(`[${selectedYm}] ${manualCrew}에 ${name}님이 배정되었습니다.`);
+      setManualName('');
+    } catch (e) {
+      console.error(e);
+      alert('배정 추가 중 오류가 발생했습니다.');
+    }
+  }
 
   const stats = React.useMemo(() => {
     const allUsers = Object.values(users || {});
@@ -138,13 +187,13 @@ function AdminStatsSearchBlock({ users, approvalLists, currentYmKey }) {
       }
 
       // 이번 달 1독 예상자 (approvalLists와 currentYmKey 기준)
-      if (approvalLists && currentYmKey) {
+      if (currentYmKey) {
         const cleanName = (u.name || '').trim().replace(/\s+/g, '');
         const beforeDok = calculateDokStatusDetailed(medals).totalDok;
         const virtualMedals = { ...medals };
         let willEarnAny = false;
 
-        Object.entries(approvalLists).forEach(([crewName, names]) => {
+        Object.entries(monthlyApprovals || {}).forEach(([crewName, names]) => {
           if (Array.isArray(names) && names.some(n => n.trim().replace(/\s+/g, '') === cleanName)) {
             let medalType = 'bronze';
             if (crewName === '고급반') medalType = 'gold';
@@ -205,12 +254,25 @@ function AdminStatsSearchBlock({ users, approvalLists, currentYmKey }) {
       yearlyDokUsers: yearlyFormatted,
       remainingFragments
     };
-  }, [users, selectedYm, approvalLists, currentYmKey]);
+  }, [users, selectedYm, monthlyApprovals, currentYmKey]);
 
   return (
     <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, background: '#FFFFFF', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }}>
-      <h3 style={{ marginBottom: 8, color: '#1D3557' }}>🔍 조건별 명단 검색 및 출력</h3>
-      <p style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>달별 완주자 및 1독자, 누적 현황을 손쉽게 확인하세요.<br />버튼을 눌러 각 명단을 확인할 수 있습니다.</p>
+      <h3 style={{ marginBottom: 4, color: '#1D3557' }}>🔍 조건별 명단 검색 및 출력</h3>
+      <div style={{
+        fontSize: 13,
+        color: '#D00000',
+        background: '#FFF5F5',
+        padding: '10px 14px',
+        borderRadius: 8,
+        border: '1px solid #FFDCDC',
+        marginBottom: 16,
+        lineHeight: 1.5,
+        fontWeight: 600
+      }}>
+        💡 11번 버튼을 누를 때, 반 배정된 명단만 집계됩니다.<br />
+        (지난달 수동 메달 추가 시, 반 배정도 해야 집계 됩니다)
+      </div>
 
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center' }}>
         <input
@@ -224,6 +286,7 @@ function AdminStatsSearchBlock({ users, approvalLists, currentYmKey }) {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
         <button onClick={() => setActiveTab('monthly_finishers')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_finishers' ? '#0071E3' : '#f1f1f1', color: activeTab === 'monthly_finishers' ? '#fff' : '#333' }}>*달별 완주자 명단</button>
+        <button onClick={() => setActiveTab('monthly_assignments')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_assignments' ? '#AF52DE' : '#f1f1f1', color: activeTab === 'monthly_assignments' ? '#fff' : '#333' }}>📁 달별 배정 명단 확인/추가</button>
         <button onClick={() => setActiveTab('monthly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'monthly_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'monthly_dok' ? '#fff' : '#333' }}>*달별 1독자 명단</button>
         <button onClick={() => setActiveTab('expected_dok')} style={{ ...tabBtnStyle, background: activeTab === 'expected_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'expected_dok' ? '#fff' : '#333' }}>*이번 달 1독 예상자</button>
         <button onClick={() => setActiveTab('yearly_dok')} style={{ ...tabBtnStyle, background: activeTab === 'yearly_dok' ? '#0071E3' : '#f1f1f1', color: activeTab === 'yearly_dok' ? '#fff' : '#333' }}>*올해 누적 1독자(다독순)</button>
@@ -237,6 +300,46 @@ function AdminStatsSearchBlock({ users, approvalLists, currentYmKey }) {
             {stats.monthlyFinishers.length > 0 ? (
               stats.monthlyFinishers.map((line, idx) => <div key={idx} style={{ marginBottom: 6 }}>{line}</div>)
             ) : <div style={{ color: '#888' }}>해당 월 완주자가 없습니다.</div>}
+          </div>
+        )}
+        {activeTab === 'monthly_assignments' && (
+          <div>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#1D3557' }}>📌 {selectedYm} 반별 배정(승인) 명단</div>
+            <div style={{ marginBottom: 20, padding: 12, background: '#fff', borderRadius: 8, border: '1px solid #ddd' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>➕ [과거/현재] 배정 명단 수동 추가</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="성도 실명 입력"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ccc', fontSize: 13, flex: 1, minWidth: 120 }}
+                />
+                <select
+                  value={manualCrew}
+                  onChange={(e) => setManualCrew(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ccc', fontSize: 13 }}
+                >
+                  {CREW_KEYS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button
+                  onClick={handleAddManualAssignment}
+                  style={{ padding: '6px 14px', background: '#0071E3', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+                >
+                  배정 추가
+                </button>
+              </div>
+            </div>
+            {Object.entries(monthlyApprovals).some(([_, list]) => list.length > 0) ? (
+              CREW_KEYS.map(crew => (
+                monthlyApprovals[crew] && monthlyApprovals[crew].length > 0 ? (
+                  <div key={crew} style={{ marginBottom: 8 }}>
+                    <span style={{ fontWeight: 'bold', marginRight: 8 }}>[{crew}]</span>
+                    <span>{monthlyApprovals[crew].join(', ')}</span>
+                  </div>
+                ) : null
+              ))
+            ) : <div style={{ color: '#888' }}>해당 월 배정 명단이 비어 있습니다.</div>}
           </div>
         )}
         {activeTab === 'monthly_dok' && (
@@ -285,6 +388,8 @@ const tabBtnStyle = {
 export default function AdminPage({ user }) {
   const navigate = useNavigate();
 
+  const [users, setUsers] = useState({});
+
   // 🔐 관리자 인증 완전 우회 (로컬 테스트용)
   /*
   useEffect(() => {
@@ -294,7 +399,6 @@ export default function AdminPage({ user }) {
     }
   }, [user, navigate]);
   */
-  const [users, setUsers] = useState({});
   const [crews, setCrews] = useState({});
   const [crewStatus, setCrewStatus] = useState(() => {
     const init = {};
@@ -2020,7 +2124,7 @@ export default function AdminPage({ user }) {
               </div>
             )}
           </div>
-          <AdminStatsSearchBlock users={users} approvalLists={approvalLists} currentYmKey={ymKey} />
+          <AdminStatsSearchBlock users={users} currentYmKey={ymKey} />
         </div>
       )}
 
@@ -2796,9 +2900,21 @@ export default function AdminPage({ user }) {
       {/* 🔄 [11] 데이터 재집계 및 동기화 */}
       <div style={{ marginTop: 40, padding: 20, background: '#F0F9FF', border: '2px solid #3B82F6', borderRadius: 12 }}>
         <h3 style={{ color: '#1E40AF', margin: '0 0 10px 0' }}>🔄 [11] 데이터 재집계 및 동기화 (관리자 전용)</h3>
-        <p style={{ fontSize: 13, color: '#1E3A8A', lineHeight: 1.5, marginBottom: 15 }}>
-          데이터 수동 변경 후 누르면 메달, 보고서 등이 동기화됩니다.<br />
-          (모든 승인 인원의 기록을 전수 조사하여 자격에 맞춰 메달을 지급/회수하고 랭킹을 갱신합니다.)
+        <p style={{
+          fontSize: 14,
+          color: '#1E3A8A',
+          lineHeight: 1.6,
+          marginBottom: 18,
+          background: '#fff',
+          padding: '12px 16px',
+          borderRadius: 8,
+          border: '1px solid #BFDBFE',
+          fontWeight: 600
+        }}>
+          이 버튼은 DB의 오리지널 자료를 기반으로 메달과 1독을 재집계 합니다.<br />
+          💡 버튼을 누를 때, 반 배정된 명단만 집계됩니다.<br />
+          (지난달 수동 메달 추가 시, 반 배정도 해야 집계 됩니다)<br />
+          <span style={{ color: '#0071E3' }}>[🔍 조건별 명단 검색 및 출력]</span>에서 지난달 반 배정 확인 하세요.
         </p>
         <button
           onClick={async () => {

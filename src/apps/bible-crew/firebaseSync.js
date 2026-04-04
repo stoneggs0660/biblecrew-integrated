@@ -538,6 +538,16 @@ export async function adminSetMonthlyUserMedal(year, month, uid, medalType, crew
   } else if (medalType === 'none') {
     // 메달 삭제 시 영수증도 삭제
     tasks.push(set(awardRecordRef, null));
+
+    // ✅ [추가] 11번 버튼(재계산) 방어용: 달력 체크 및 배정 명단 자동 삭제
+    // 1. 해당 월의 모든 날짜 체크 해제
+    const dates = getMonthDates(year, month);
+    const checksClear = {};
+    dates.forEach(d => { checksClear[d] = null; }); // null로 설정하여 경로 삭제
+    tasks.push(update(ref(db, `crews/${crewName}/users/${uid}/checks`), checksClear));
+
+    // 2. 해당 월의 배정 명단(approvals)에서 삭제 (11번 버튼의 대상에서 제외)
+    tasks.push(set(ref(db, `approvals/${ymKey}/${crewName}/${uid}`), null));
   }
 
   // 7. DB 최종 저장
@@ -686,7 +696,7 @@ export async function removeIndividualApprovalWithHistory(crew, ymKey, uid, name
 
   const updates = {};
   updates[`approvals/${ymKey}/${crew}/${cleanName}`] = null;
-  
+
   if (uid) {
     updates[`applicationHistory/${ymKey}/${uid}/${crew}`] = null;
     updates[`users/${uid}/crew`] = null;
@@ -1270,7 +1280,7 @@ export async function runMedalFixOps() {
   const now = new Date();
   const year = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 기수(1~12)
-  
+
   // 1월부터 이번 달까지 자동으로 대상 월 생성
   const targetMonths = Array.from({ length: currentMonth }, (_, i) => i + 1);
   console.log(`📅 대상 연도: ${year}, 대상 범위: 1월 ~ ${currentMonth}월`);
@@ -1298,7 +1308,7 @@ export async function runMedalFixOps() {
       else if (it.crew === '중급반') inter++;
       else if (it.crew === '초급반(구약A)') basic.otA++;
       else if (it.crew === '초급반(구약B)') basic.otB++;
-      else if (it.crew?.includes('파노라마') || it.crew === '초급반') basic.nt++;
+      else if (it.crew === '초급반') basic.nt++;
     });
     let total = adv;
     const fromInter = Math.min(inter, basic.nt);
@@ -1314,7 +1324,7 @@ export async function runMedalFixOps() {
     // ⚠️ 기존 메달 기록 중 '올해'가 아닌 기록(예: 2025년)은 보존해야 함
     const existingEarned = user.earnedMedals || {};
     const filteredEarned = {};
-    
+
     Object.entries(existingEarned).forEach(([k, v]) => {
       // 올해가 아닌 데이터는 그대로 유지
       if (!k.startsWith(`${year}-`)) {
@@ -1325,7 +1335,7 @@ export async function runMedalFixOps() {
     earnedMedalStore[uid] = filteredEarned;
     // 메달 카운트는 아래 로직에서 전체 누적(과거+현재)으로 다시 계산될 예정
     medalCounts[uid] = { gold: 0, silver: 0, bronze: 0 };
-    
+
     // 과거(올해 이전) 메달 개수 먼저 합산
     Object.values(filteredEarned).forEach(mType => {
       if (medalCounts[uid][mType] !== undefined) medalCounts[uid][mType]++;
