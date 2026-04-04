@@ -1267,8 +1267,13 @@ export async function runMedalFixOps() {
   console.log("--- 🛠️ [클라이언트 실행] 메달/보고서 데이터 일괄 복구 및 정제(Fix) ---");
   const db2 = getDatabase();
 
-  const year = 2026;
-  const targetMonths = [1, 2]; // 1, 2월 대상으로 조사
+  const now = new Date();
+  const year = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 기수(1~12)
+  
+  // 1월부터 이번 달까지 자동으로 대상 월 생성
+  const targetMonths = Array.from({ length: currentMonth }, (_, i) => i + 1);
+  console.log(`📅 대상 연도: ${year}, 대상 범위: 1월 ~ ${currentMonth}월`);
 
   // 1. 전체 유저 목록 가져오기
   console.log("📥 [1/4] 사용자 목록 로딩 중...");
@@ -1303,9 +1308,28 @@ export async function runMedalFixOps() {
     return total;
   }
 
+  // 초기화: 기존 유저 데이터를 보존하면서 올해의 메달만 다시 계산할 준비
   allUids.forEach(uid => {
-    earnedMedalStore[uid] = {};
+    const user = usersMap[uid];
+    // ⚠️ 기존 메달 기록 중 '올해'가 아닌 기록(예: 2025년)은 보존해야 함
+    const existingEarned = user.earnedMedals || {};
+    const filteredEarned = {};
+    
+    Object.entries(existingEarned).forEach(([k, v]) => {
+      // 올해가 아닌 데이터는 그대로 유지
+      if (!k.startsWith(`${year}-`)) {
+        filteredEarned[k] = v;
+      }
+    });
+
+    earnedMedalStore[uid] = filteredEarned;
+    // 메달 카운트는 아래 로직에서 전체 누적(과거+현재)으로 다시 계산될 예정
     medalCounts[uid] = { gold: 0, silver: 0, bronze: 0 };
+    
+    // 과거(올해 이전) 메달 개수 먼저 합산
+    Object.values(filteredEarned).forEach(mType => {
+      if (medalCounts[uid][mType] !== undefined) medalCounts[uid][mType]++;
+    });
   });
 
   console.log("\n📥 [2/4] 진도표(checks) 전수 조사 및 메달 재판정...");

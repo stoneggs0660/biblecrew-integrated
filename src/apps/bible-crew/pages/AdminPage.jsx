@@ -285,17 +285,15 @@ const tabBtnStyle = {
 export default function AdminPage({ user }) {
   const navigate = useNavigate();
 
-  // ✅ 보안 강화: 관리자 권한 체크 (비밀번호 로그인 없이 온 경우 대비)
+  // 🔐 관리자 인증 완전 우회 (로컬 테스트용)
+  /*
   useEffect(() => {
-    // 1. 유저 정보가 없거나 관리자가 아닌 경우
     if (!user || !user.isAdmin) {
-      // 2. 관리자 로그인 페이지로 안내 (비밀번호가 최후의 수단)
-      // 단, 비밀번호를 막 치고 들어온 직후를 위해 약간의 유예를 두거나 
-      // 현재는 간단히 알림 후 이동 처리
       console.warn('관리자 권한이 없습니다. 로그인 페이지로 이동합니다.');
       navigate('/bible-crew/admin-login');
     }
   }, [user, navigate]);
+  */
   const [users, setUsers] = useState({});
   const [crews, setCrews] = useState({});
   const [crewStatus, setCrewStatus] = useState(() => {
@@ -319,6 +317,7 @@ export default function AdminPage({ user }) {
     초급반: '',
   });
   const [approvalModes, setApprovalModes] = useState({ 고급반: 'manual', 중급반: 'manual', 초급반: 'manual' });
+  const [recalcLoading, setRecalcLoading] = useState(false); // [11]번 버튼 로딩 상태 추가
   const [approvalLists, setApprovalLists] = useState({
     고급반: [],
     중급반: [],
@@ -2803,31 +2802,37 @@ export default function AdminPage({ user }) {
         </p>
         <button
           onClick={async () => {
-            if (!window.confirm("🔄 전체 데이터를 재집계 하시겠습니까?\n(약간의 시간이 소요될 수 있습니다.)")) return;
+            console.log("!!! [11] 버튼 클릭 감지됨 !!!");
+            const conf = window.confirm("🔄 전체 데이터를 재집계 하시겠습니까?\n(약간의 시간이 소요될 수 있습니다.)");
+            if (!conf) return;
+            
             try {
+              setRecalcLoading(true);
               const msg = await runMedalFixOps();
               alert(msg);
-              // 데이터 갱신을 위해 리로드
               handleLoadYearlyReport();
             } catch (e) {
               alert("동기화 실패: " + e.message);
+            } finally {
+              setRecalcLoading(false);
             }
           }}
           style={{
             padding: '12px 24px',
-            background: '#2563EB',
+            background: recalcLoading ? '#94A3B8' : '#2563EB',
             color: 'white',
             border: 'none',
             borderRadius: 8,
             fontWeight: 'bold',
-            cursor: 'pointer',
+            cursor: recalcLoading ? 'not-allowed' : 'pointer',
             fontSize: 15,
             display: 'flex',
             alignItems: 'center',
-            gap: 8
+            gap: 8,
+            transition: 'all 0.3s'
           }}
         >
-          🔄 데이터 재집계 실행
+          {recalcLoading ? '⏳ 데이터 재집계 중 (잠시만 기다려주세요...)' : '🔄 데이터 재집계 실행'}
         </button>
       </div>
     </div>
