@@ -48,6 +48,7 @@ import {
   subscribeToAssignmentStatus, // 추가
   fetchAssignmentSnapshot, // 추가
   runMedalFixOps, // ✅ Added Fix Ops Function Import (Will execute fix logic with auth)
+  recalculateUserMedals, // ✅ 추가
 } from '../firebaseSync';
 
 import { calculateMonthlyRankingForMonth } from '../utils/rankingUtils';
@@ -122,8 +123,8 @@ function AdminStatsSearchBlock({ users, currentYmKey }) {
       '초급반(구약A)': [],
       '초급반(구약B)': [],
       '초급반': [],
-      '신약(파노라마)': [],
-      '구약(파노라마)': []
+      '구약파노라마': [],
+      '신약파노라마': []
     };
 
     const monthlyDokAchievers = [];
@@ -152,22 +153,25 @@ function AdminStatsSearchBlock({ users, currentYmKey }) {
         // 1독을 이룬 조합들(배열의 배열)
         const usedCombinations = dokStatusMap.usedMedals || [];
 
-        // 이번 달 메달이 포함되어 있는 1독 조합이 있는지 확인
-        const newDokCombinations = usedCombinations.filter(combo =>
-          combo.some(medalKey => medalKey.startsWith(selectedYm))
-        );
+        // ✅ 수정: 이번 달에 "완성된" 1독 조합만 필터링
+        // 조합 내의 메달 중 날짜가 가장 늦은 메달이 선택한 월(selectedYm)과 일치해야 함
+        const newDokCombinations = usedCombinations.filter(combo => {
+          // 각 조합에서 가장 최신 메달 키 찾기 (문자열 정렬 시 마지막이 최신)
+          const latestMedalKey = [...combo].sort().pop();
+          return latestMedalKey && latestMedalKey.startsWith(selectedYm);
+        });
 
         if (newDokCombinations.length > 0) {
-          // 포함된 모든 조합의 반 이름 추출 (중복 제거)
-          const allUsedCrews = new Set();
-          newDokCombinations.forEach(combo => {
-            combo.forEach(key => {
-              const crewName = key.split('_')[1] || (medals[key] === 'gold' ? '고급반' : medals[key] === 'silver' ? '중급반' : '초급반');
-              allUsedCrews.add(crewName);
+          // ✅ 각 1독 조합별로 상세 텍스트 생성
+          const comboDetailStrings = newDokCombinations.map(combo => {
+            const comboCrews = combo.map(key => {
+              // 메달 키에서 반 이름 추출
+              return key.split('_')[1] || (medals[key] === 'gold' ? '고급반' : medals[key] === 'silver' ? '중급반' : '초급반');
             });
+            return `1독(${comboCrews.join(', ')})`;
           });
 
-          monthlyDokAchievers.push(`${u.name || u.uid}: ${Array.from(allUsedCrews).join(', ')}`);
+          monthlyDokAchievers.push(`${u.name || u.uid} ${comboDetailStrings.join(' ')}`);
         }
       }
 
@@ -232,7 +236,7 @@ function AdminStatsSearchBlock({ users, currentYmKey }) {
       }
     });
 
-    yearlyDokUsers.sort((a, b) => b.dok - a.dok || String(a.name).localeCompare(String(b.name), 'ko'));
+    yearlyDokUsers.sort((a, b) => (b.dok || 0) - (a.dok || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
     const yearlyFormatted = yearlyDokUsers.map(y => `${y.name}(${y.dok}독)`);
 
     // 완주자 출력 포맷: 반별로 이름 나열
@@ -270,8 +274,7 @@ function AdminStatsSearchBlock({ users, currentYmKey }) {
         lineHeight: 1.5,
         fontWeight: 600
       }}>
-        💡 11번 버튼을 누를 때, 반 배정된 명단만 집계됩니다.<br />
-        (지난달 수동 메달 추가 시, 반 배정도 해야 집계 됩니다)
+        💡 워크플로우: 반배정명단 + 성경읽기체크 완주자 확인 ➜ 메달 수여 ➜ 각종 출력
       </div>
 
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center' }}>
@@ -443,8 +446,9 @@ export default function AdminPage({ user }) {
   const [manualHoFYear, setManualHoFYear] = useState(new Date().getFullYear());
   const [manualHoFMonth, setManualHoFMonth] = useState(new Date().getMonth() + 1);
   const [manualHoFCrew, setManualHoFCrew] = useState(''); // ✅ 추가
-  const [manualHoFMedal, setManualHoFMedal] = useState('gold');
+  const [manualHoFMedal, setManualHoFMedal] = useState('award');
   const [manualHoFLoading, setManualHoFLoading] = useState(false);
+  const [globalSyncLoading, setGlobalSyncLoading] = useState(false); // [신규] 전체 동기화 로딩 상태
 
   // ✅ [10] 사용자 체크 강제 관리용 상태
   const [adminCalYear, setAdminCalYear] = useState(new Date().getFullYear());
@@ -976,76 +980,90 @@ export default function AdminPage({ user }) {
   }
 
 
-  function handleFinalizeLastMonth() {
-    const now = new Date();
-    let year = now.getFullYear();
-    let month = now.getMonth() + 1;
-    if (month === 1) {
-      year = year - 1;
-      month = 12;
-    } else {
-      month = month - 1;
-    }
+
+  // ✅ [개선] 수동 결산 확정 (마감 작업)
+  async function handleFinalizeSettlement(year, month) {
+    if (!window.confirm(`${year}년 ${month}월 결산을 확정하시겠습니까?\n(이미 확정된 경우 덮어쓰며 메달 숫자가 재계산됩니다.)`)) return;
+
     const { ranking } = calculateMonthlyRankingForMonth(crews, users, year, month);
     if (!ranking || ranking.length === 0) {
-      alert('지난달 집계할 데이터가 없습니다.');
+      alert('해당 월에 집계할 데이터가 없습니다 (완주자가 없음).');
       return;
     }
 
     const monthStr = String(month).padStart(2, '0');
     const ymKey = `${year}-${monthStr}`;
 
-    // 1독 달성자 판별 (이번 달 수료로 인해 1독이 추가된 사람)
+    // 1독 달성자 판별
     const dokAchievers = [];
     ranking.forEach(r => {
       if (!r.medal) return;
       const userInfo = users[r.uid];
       if (!userInfo) return;
-
       const currentMedals = userInfo.earnedMedals || {};
-      // 이번 달 조각을 포함한 상태의 1독 수
       const after = calculateDokStatus({ ...currentMedals, [`${ymKey}_${r.crew}`]: r.medal });
-      // 이번 달 조각을 제외한 상태의 1독 수
       const before = calculateDokStatus(currentMedals);
-
       if (after.totalDok > before.totalDok) {
-        dokAchievers.push({
-          name: r.name,
-          uid: r.uid,
-          dokCount: after.totalDok
-        });
+        dokAchievers.push({ name: r.name, uid: r.uid, dokCount: after.totalDok });
       }
     });
 
-    // 1. 명예의 전당 저장 (1독 달성자 포함)
-    const p1 = saveMonthlyHallOfFame(year, month, ranking, dokAchievers);
+    try {
+      // 1. 명예의 전당 및 개인 메달 영수증 발행 + 전수 재계산
+      await saveMonthlyHallOfFame(year, month, ranking, dokAchievers);
 
-    // 2. 월별 결과 보고서 데이터 생성 및 저장
-    const reportPayload = {};
-    ranking.forEach((r) => {
-      const userMedals = users[r.uid]?.medals || {};
-      const totalMedalsCount = (userMedals.gold || 0) + (userMedals.silver || 0) + (userMedals.bronze || 0);
+      // 2. 월별 결과 보고서(Snapshot) 생성
+      const reportPayload = {};
+      ranking.forEach((r) => {
+        const uMeta = users[r.uid];
+        const currentMedals = uMeta?.medals || { gold: 0, silver: 0, bronze: 0 };
+        const totalCount = (currentMedals.gold || 0) + (currentMedals.silver || 0) + (currentMedals.bronze || 0);
+        const dokStatus = calculateDokStatus(uMeta?.earnedMedals || {});
 
-      const dokStatus = calculateDokStatus(users[r.uid]?.earnedMedals || {});
+        reportPayload[r.uid] = {
+          uid: r.uid,
+          name: r.name,
+          crew: r.crew,
+          chapters: r.chapters,
+          progress: 100,
+          stateLabel: r.medal ? '성공' : '실패',
+          totalMedals: totalCount,
+          totalDok: dokStatus.totalDok
+        };
+      });
+      await saveMonthlyReport(year, month, reportPayload);
 
-      reportPayload[r.uid] = {
-        uid: r.uid,
-        name: r.name,
-        crew: r.crew,
-        chapters: r.chapters,
-        progress: 100,
-        stateLabel: r.medal ? '성공' : '실패',
-        totalMedals: totalMedalsCount,
-        totalDok: dokStatus.totalDok // 추가
-      };
-    });
-    const p2 = saveMonthlyReport(year, month, reportPayload);
-
-    Promise.all([p1, p2]).then(() => {
-      alert(`${year}년 ${month}월 명예의 전당 및 결과 보고서가 확정되었습니다.`);
-      // 보고서 목록 아카이브 갱신
+      alert(`${year}년 ${month}월 수동 결산이 완료되었습니다!`);
       getMonthlyReportMonths().then(setReportMonths);
-    });
+    } catch (e) {
+      console.error(e);
+      alert('결산 중 오류가 발생했습니다.');
+    }
+  }
+
+  // ✅ [신규] 전체 데이터 정합성 동기화 (Menu 11 업그레이드)
+  async function handleGlobalSync() {
+    const ok = window.confirm('전체 사용자의 메달 숫자를 영수증 기반으로 다시 계산하시겠습니까?\n\n- 중복 지급된 메달이 정상화됩니다.\n- 기존 기록(영수증)은 삭제되지 않습니다.');
+    if (!ok) return;
+
+    setGlobalSyncLoading(true);
+    try {
+      const usersSnap = await get(ref(db, 'users'));
+      const allUsers = usersSnap.val() || {};
+      const uids = Object.keys(allUsers);
+      
+      let count = 0;
+      for (const uid of uids) {
+        await recalculateUserMedals(uid);
+        count++;
+      }
+      alert(`총 ${count}명의 데이터 정합성 동기화가 완료되었습니다.`);
+    } catch (e) {
+      console.error(e);
+      alert('동기화 중 오류가 발생했습니다.');
+    } finally {
+      setGlobalSyncLoading(false);
+    }
   }
 
 
@@ -1068,17 +1086,27 @@ export default function AdminPage({ user }) {
     }
     const [uid] = found;
 
+    // ✅ 반(Crew)에 따른 메달 타입 자동 결정 로직
+    let finalMedalType = manualHoFMedal; // 'none'인 경우 그대로 유지
+    if (manualHoFMedal === 'award') {
+      if (manualHoFCrew === '고급반') finalMedalType = 'gold';
+      else if (manualHoFCrew === '중급반') finalMedalType = 'silver';
+      else finalMedalType = 'bronze'; // 초급반 및 파노라마 등
+    }
+
     setManualHoFLoading(true);
     try {
-      const ok = await adminSetMonthlyUserMedal(manualHoFYear, safeMonth, uid, manualHoFMedal, manualHoFCrew);
+      const ok = await adminSetMonthlyUserMedal(manualHoFYear, safeMonth, uid, finalMedalType, manualHoFCrew);
       if (ok) {
-        alert('명예의 전당과 개인 메달 기록이 수동으로 수정되었습니다.');
+        alert(`${manualHoFCrew} 기준으로 메달(${finalMedalType}) 처리가 완료되었습니다.`);
       } else {
-        alert('수동 수정에 실패했습니다. 입력값을 다시 확인해 주세요.');
+        alert('처리에 실패했습니다. 입력값을 다시 확인해 주세요.');
       }
     } catch (e) {
       console.error(e);
-      alert('수동 수정 중 오류가 발생했습니다.');
+      alert('처리 중 오류가 발생했습니다.');
+    } finally {
+      setManualHoFLoading(false);
     }
   }
 
@@ -1221,13 +1249,11 @@ export default function AdminPage({ user }) {
           else if (crewName === '초급반') cnt.nt++;
           else if (crewName === '초급반(구약A)') cnt.ota++;
           else if (crewName === '초급반(구약B)') cnt.otb++;
-          // 파노라마는 신약 초급 등으로 퉁치거나 별도 계산 필요시 추가. 
-          // 현재 로직상 파노라마는 초급반(nt) 카테고리에 포함되는지 확인 필요.
-          // 앞선 시뮬레이션에서는 파노라마를 nt에 포함시켰음.
-          else if (crewName && (crewName.includes('파노라마') || crewName.includes('초급'))) {
-            // 기본적으로 신약/기타로 분류
+          else if (crewName === '초급반') {
+            // 오직 '초급반'(신약초급)만 세트 계산에 포함
             cnt.nt++;
           }
+          // 파노라마 반은 메달은 지급되나 1독 세트 계산(cnt)에서는 제외됨
         });
 
         // 1독(Bible Reads) 계산
@@ -1945,7 +1971,7 @@ export default function AdminPage({ user }) {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ margin: 0, color: '#1D3557' }}>[4] 다음 달 승인 확정 명단 ({nextYmKey})</h3>
+              <h3 style={{ margin: 0, color: '#1D3557' }}>(4) 다음 달 예비 반배정 명단 ({nextYmKey})</h3>
 
               {/* ✅ 새 달 시작 버튼 (자정 지나면 활성화) */}
               {(() => {
@@ -1975,8 +2001,8 @@ export default function AdminPage({ user }) {
               })()}
             </div>
 
-            <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
-              다음 달 반 배정이 확정된 인원입니다. <strong>{nextYmKey} 1일 자정 이후</strong> 버튼을 눌러 실제 배정을 적용할 수 있습니다.
+            <p style={{ fontSize: 13, color: '#E63946', marginBottom: 12, fontWeight: 700 }}>
+              다음달이 되면 자동으로 (2),(5)으로 반영됩니다.
             </p>
 
             {CREW_KEYS.map((crew) => {
@@ -2003,10 +2029,9 @@ export default function AdminPage({ user }) {
               boxShadow: '0 4px 12px rgba(0,0,0,0.04)',
             }}
           >
-            <h3 style={{ marginBottom: 8, color: '#1D3557' }}>[5] 이번 달 기초 배정 기록 ({ymKey})</h3>
-            <p style={{ fontSize: 12, marginBottom: 12, color: '#555' }}>
-              이번 달 시작 시점에 [4]번 섹션에서 배정 완료 버튼을 눌러 승인되었던 기초 명단입니다.
-              (현재 명단([2]번)과 대조하여 변경 사항을 확인할 수 있습니다.)
+            <h3 style={{ marginBottom: 8, color: '#1D3557' }}>(5) 이번 달 반 배정 확정명단 ({ymKey})</h3>
+            <p style={{ fontSize: 13, marginBottom: 12, color: '#E63946', fontWeight: 700 }}>
+              (2)에서 명단을 추가 하면 이곳에 추가 됩니다. 
             </p>
 
             {appliedAt ? (
@@ -2134,29 +2159,81 @@ export default function AdminPage({ user }) {
           <div
             style={{
               marginBottom: 10,
-              padding: '12px 16px',
+              padding: '20px',
               borderRadius: 12,
-              background: '#F1F3F5',
+              background: 'linear-gradient(135deg, #1D3557 0%, #457B9D 100%)',
+              color: '#fff',
+              boxShadow: '0 4px 15px rgba(29, 53, 87, 0.2)',
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
+              flexDirection: 'column',
+              gap: 16
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 'bold', color: '#1D3557' }}>지난달 명적 확정 (마감 작업)</span>
+            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 900 }}>🚀 수동결산</h3>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#f1f1f1', fontWeight: 700 }}>
+                (중요! 매달 1일에 꼭 눌러야 합니다. 수동결산으로 메달을 부여)
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>📅 결산 대상 월 선택</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select 
+                  value={manualHoFYear} 
+                  onChange={e => setManualHoFYear(Number(e.target.value))} 
+                  style={{ padding: '6px 10px', borderRadius: 6, border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
+                </select>
+                <select 
+                  value={manualHoFMonth} 
+                  onChange={e => setManualHoFMonth(Number(e.target.value))} 
+                  style={{ padding: '6px 10px', borderRadius: 6, border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+                </select>
+              </div>
+            </div>
+
             <button
-              onClick={handleFinalizeLastMonth}
+              onClick={() => handleFinalizeSettlement(manualHoFYear, manualHoFMonth)}
               style={{
-                padding: '8px 16px',
-                borderRadius: 8,
+                width: '100%',
+                padding: '16px',
+                borderRadius: 10,
                 border: 'none',
-                background: '#1D3557',
-                color: '#fff',
-                fontWeight: 'bold',
+                background: '#F1FAEE',
+                color: '#1D3557',
+                fontWeight: 900,
+                fontSize: 18,
                 cursor: 'pointer',
+                boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s'
               }}
+              onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+              onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
             >
-              지난달 명예의 전당 수동확정
+              선택한 월 결산하기
+              <div style={{ fontSize: 12, fontWeight: 400, marginTop: 4 }}>
+                (반배정과 성경읽기표를 바탕으로 새롭게 메달을 결산합니다.)
+              </div>
             </button>
+
+            <div style={{ fontSize: 13, background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: 8, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 800, color: '#A8DADC', marginBottom: 4 }}>📌 기능</div>
+              1) 매 달 1일 수동결산<br />
+              2) 메달 수가 맞지 않을 때 언제든지 수동결산
+              
+              <div style={{ fontWeight: 800, color: '#E63946', margin: '10px 0 4px' }}>⚠️ 사전확인 할 것</div>
+              (7), (8)번으로 수정할 인원의 반배정과 성경읽기표를 미리 확인 및 수정할 것
+
+              <div style={{ fontWeight: 800, color: '#A8DADC', margin: '10px 0 4px' }}>📝 워크플로우 (설명)</div>
+              • 해당 월의 모든 메달 삭제<br />
+              • 해당 월의 반 배정과 성경체크 완주자 확인<br />
+              • 새로운 메달 수여<br />
+              • 기타 출력(개인기록, 명예의 전당, 1독현황, 남은 조각 등) 실시간 연동
+            </div>
           </div>
           <div
             style={{
@@ -2459,10 +2536,10 @@ export default function AdminPage({ user }) {
               boxShadow: '0 4px 10px rgba(0,0,0,0.06)',
             }}
           >
-            <h3 style={{ marginTop: 0, marginBottom: 10 }}>[7] 명예의 전당 수동 수정</h3>
-            <p style={{ fontSize: 12, marginBottom: 10, color: '#555' }}>
-              사용자가 메달에 대해 이의를 제기했을 때, 연도·월·이름 기준으로 메달을 조정할 수 있습니다.
-              수정 시 해당 사용자의 개인 메달 기록도 함께 반영됩니다.
+            <h3 style={{ marginTop: 0, marginBottom: 10 }}>[7] 메달 수동 수여하기</h3>
+            <p style={{ fontSize: 12, marginBottom: 10, color: '#555', lineHeight: 1.6 }}>
+              해당 월, 해당 반에 자동 반배정이 되고, 성경읽기표가 완주로 체크되며 해당 메달이 수여됨.<br />
+              반면, 메달 삭제 시 반배정 취소, 성경읽기 완주 취소, 메달 취소됨.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               <input
@@ -2503,12 +2580,10 @@ export default function AdminPage({ user }) {
               <select
                 value={manualHoFMedal}
                 onChange={(e) => setManualHoFMedal(e.target.value)}
-                style={{ width: 120, padding: 6, borderRadius: 8, border: '1px solid #ccc' }}
+                style={{ width: 120, padding: 6, borderRadius: 8, border: '1px solid #ccc', fontWeight: 'bold' }}
               >
-                <option value="gold">🥇 금</option>
-                <option value="silver">🥈 은</option>
-                <option value="bronze">🥉 동</option>
-                <option value="none">메달 삭제</option>
+                <option value="award">🎁 메달 수여</option>
+                <option value="none">🗑️ 메달 삭제</option>
               </select>
             </div>
             <button
@@ -2524,7 +2599,7 @@ export default function AdminPage({ user }) {
                 cursor: 'pointer',
               }}
             >
-              {manualHoFLoading ? '수정 중...' : '명예의 전당 수동 수정 저장'}
+              {manualHoFLoading ? '처리 중...' : '메달 수동 수여'}
             </button>
           </div>
 
@@ -2897,60 +2972,6 @@ export default function AdminPage({ user }) {
           </div>
         </div>
       )}
-      {/* 🔄 [11] 데이터 재집계 및 동기화 */}
-      <div style={{ marginTop: 40, padding: 20, background: '#F0F9FF', border: '2px solid #3B82F6', borderRadius: 12 }}>
-        <h3 style={{ color: '#1E40AF', margin: '0 0 10px 0' }}>🔄 [11] 데이터 재집계 및 동기화 (관리자 전용)</h3>
-        <p style={{
-          fontSize: 14,
-          color: '#1E3A8A',
-          lineHeight: 1.6,
-          marginBottom: 18,
-          background: '#fff',
-          padding: '12px 16px',
-          borderRadius: 8,
-          border: '1px solid #BFDBFE',
-          fontWeight: 600
-        }}>
-          이 버튼은 DB의 오리지널 자료를 기반으로 메달과 1독을 재집계 합니다.<br />
-          💡 버튼을 누를 때, 반 배정된 명단만 집계됩니다.<br />
-          (지난달 수동 메달 추가 시, 반 배정도 해야 집계 됩니다)<br />
-          <span style={{ color: '#0071E3' }}>[🔍 조건별 명단 검색 및 출력]</span>에서 지난달 반 배정 확인 하세요.
-        </p>
-        <button
-          onClick={async () => {
-            console.log("!!! [11] 버튼 클릭 감지됨 !!!");
-            const conf = window.confirm("🔄 전체 데이터를 재집계 하시겠습니까?\n(약간의 시간이 소요될 수 있습니다.)");
-            if (!conf) return;
-            
-            try {
-              setRecalcLoading(true);
-              const msg = await runMedalFixOps();
-              alert(msg);
-              handleLoadYearlyReport();
-            } catch (e) {
-              alert("동기화 실패: " + e.message);
-            } finally {
-              setRecalcLoading(false);
-            }
-          }}
-          style={{
-            padding: '12px 24px',
-            background: recalcLoading ? '#94A3B8' : '#2563EB',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            fontWeight: 'bold',
-            cursor: recalcLoading ? 'not-allowed' : 'pointer',
-            fontSize: 15,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            transition: 'all 0.3s'
-          }}
-        >
-          {recalcLoading ? '⏳ 데이터 재집계 중 (잠시만 기다려주세요...)' : '🔄 데이터 재집계 실행'}
-        </button>
-      </div>
     </div>
   );
 }

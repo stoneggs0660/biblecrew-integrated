@@ -387,48 +387,22 @@ export async function saveMonthlyHallOfFame(year, month, ranking, dokAchievers =
     resultsByMedal[medalKey].push({ name: displayName, crew: crewName });
     legacyPayload[medalKey][u.uid] = { name: displayName, crew: crewName, chapters: u.chapters || 0 };
 
-    // ✅ 중복 지급 방지 로직 (수정: 반별로 구분하여 지급)
-    // 기존: users/{uid}/earnedMedals/{YYYY-MM} -> 반 상관없이 월 1회만 지급됨
-    // 변경: users/{uid}/earnedMedals/{YYYY-MM}_{CrewName} -> 반마다 지급 가능
+    // ✅ [리팩토링] 메달 영수증(awardKey)만 기록하고, 메달 카운트는 전수 재계산 엔진에 맡깁니다.
+    // 이를 통해 증강(+1) 시 발생하는 경쟁 상태와 중복 지급을 원천 차단합니다.
     const awardKey = `${ymKey}_${crewName}`;
     const awardRecordRef = ref(db2, `users/${u.uid}/earnedMedals/${awardKey}`);
-    const medalCountRef = ref(db2, `users/${u.uid}/medals/${medalKey}`);
 
-    const awardSnap = await get(awardRecordRef);
-    const alreadyAwarded = awardSnap.val();
-
-    if (alreadyAwarded === medalKey) {
-      // 이미 이 반에서 같은 메달을 받았다면 카운트 증가 생략
-      continue;
-    } else if (alreadyAwarded && alreadyAwarded !== medalKey) {
-      // 이 반에서 다른 메달을 이미 받았다면 (예: 은->금 승격 등) 교체
-      const oldMedalRef = ref(db2, `users/${u.uid}/medals/${alreadyAwarded}`);
-      tasks.push((async () => {
-        const oldSnap = await get(oldMedalRef);
-        const nextSnap = await get(medalCountRef);
-        await set(oldMedalRef, Math.max(0, (oldSnap.val() || 0) - 1));
-        await set(medalCountRef, (nextSnap.val() || 0) + 1);
-        await set(awardRecordRef, medalKey);
-      })());
-    } else {
-      // 처음 받는 경우면 카운트 +1
-      tasks.push((async () => {
-        const curSnap = await get(medalCountRef);
-        await set(medalCountRef, (curSnap.val() || 0) + 1);
-        await set(awardRecordRef, medalKey);
-      })());
-    }
+    tasks.push((async () => {
+      await set(awardRecordRef, medalKey);
+      await recalculateUserMedals(u.uid);
+    })());
   }
 
-  // 3. DB 실제 저장 (경로 통합)
-  // 신규 경로: hallOfFame/{year}/monthlyResults/{month}/{medal}
+  // 3. DB 실제 저장 (명예의 전당 경로)
   for (const medal of ['gold', 'silver', 'bronze']) {
     tasks.push(set(ref(db2, `hallOfFame/${year}/monthlyResults/${monthStr}/${medal}`), resultsByMedal[medal]));
   }
-  // 1독 달성자 저장
   tasks.push(set(ref(db2, `hallOfFame/${year}/monthlyResults/${monthStr}/dokAchievers`), dokAchievers));
-
-  // 구버전 경로 호환성 유지: hallOfFame/monthly/{year}/{month}
   tasks.push(set(ref(db2, `hallOfFame/monthly/${year}/${month}`), legacyPayload));
 
   await Promise.all(tasks);
@@ -535,19 +509,29 @@ export async function adminSetMonthlyUserMedal(year, month, uid, medalType, crew
     );
     // earnedMedals 영수증 기록
     tasks.push(set(awardRecordRef, medalType));
+
+    // ✅ [신규] 수동 수여 시: 해당 월의 모든 날짜를 완주로 체크하고 배정 명단에도 자동 추가
+    const dates = getMonthDates(year, month);
+    const checksFilled = {};
+    dates.forEach(d => { checksFilled[d] = true; }); 
+    
+    // 1. 달력 완주 체크
+    tasks.push(update(ref(db, `crews/${crewName}/users/${uid}/checks`), checksFilled));
+    // 2. 배정 명단(approvals)에 이름 추가 (11번 버튼 정합성 유지용)
+    tasks.push(set(ref(db, `approvals/${ymKey}/${crewName}/${userName}`), true));
   } else if (medalType === 'none') {
     // 메달 삭제 시 영수증도 삭제
     tasks.push(set(awardRecordRef, null));
 
-    // ✅ [추가] 11번 버튼(재계산) 방어용: 달력 체크 및 배정 명단 자동 삭제
-    // 1. 해당 월의 모든 날짜 체크 해제
+    // ✅ [보완] 메달 삭제 시: 달력 체크 및 배정 명단 자동 삭제
     const dates = getMonthDates(year, month);
     const checksClear = {};
-    dates.forEach(d => { checksClear[d] = null; }); // null로 설정하여 경로 삭제
-    tasks.push(update(ref(db, `crews/${crewName}/users/${uid}/checks`), checksClear));
+    dates.forEach(d => { checksClear[d] = null; }); 
 
-    // 2. 해당 월의 배정 명단(approvals)에서 삭제 (11번 버튼의 대상에서 제외)
-    tasks.push(set(ref(db, `approvals/${ymKey}/${crewName}/${uid}`), null));
+    // 1. 해당 월의 모든 날짜 체크 해제
+    tasks.push(update(ref(db, `crews/${crewName}/users/${uid}/checks`), checksClear));
+    // 2. 해당 월의 배정 명단(approvals)에서 삭제
+    tasks.push(set(ref(db, `approvals/${ymKey}/${crewName}/${userName}`), null));
   }
 
   // 7. DB 최종 저장
@@ -1437,3 +1421,30 @@ export async function runMedalFixOps() {
   console.log("✅ [4/4] 업데이트 완료! 모든 데이터가 정상화되었습니다.");
   return "✅ [성공] 모든 데이터가 정상적으로 복구되었습니다.";
 }
+
+/**
+ * ✅ [Idempotency] 사용자의 메달 영수증(earnedMedals)을 전수 조사하여 
+ * 최종 메달 카운트(medals/{gold|silver|bronze})를 동시성 이슈 없이 재계산합니다.
+ */
+export async function recalculateUserMedals(uid) {
+  if (!uid) return;
+  const db = getDatabase();
+  const userRef = ref(db, `users/${uid}`);
+  const snap = await get(userRef);
+  const user = snap.val();
+  if (!user) return;
+
+  const earnedMedals = user.earnedMedals || {};
+  const newCounts = { gold: 0, silver: 0, bronze: 0 };
+
+  Object.values(earnedMedals).forEach(medal => {
+    if (newCounts[medal] !== undefined) {
+      newCounts[medal]++;
+    }
+  });
+
+  // 메달 카운트 업데이트
+  await set(ref(db, `users/${uid}/medals`), newCounts);
+  return newCounts;
+}
+
