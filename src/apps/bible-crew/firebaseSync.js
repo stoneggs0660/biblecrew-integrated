@@ -1175,6 +1175,11 @@ export function saveBulletinUrl(url) {
   return set(ref(db, '/settings/bulletinUrl'), url || '');
 }
 
+export function saveShowPassionBanner(isVisible) {
+  const db = getDatabase();
+  return set(ref(db, '/settings/showPassionBanner'), !!isVisible);
+}
+
 // 미배정 명단에서 특정 사용자를 숨기기 (계정은 유지, 미배정 리스트에서만 제외)
 export async function removeUnassignedUser(uid) {
   const db = getDatabase();

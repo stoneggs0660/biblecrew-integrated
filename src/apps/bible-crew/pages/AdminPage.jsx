@@ -1617,7 +1617,6 @@ export default function AdminPage({ user }) {
                 ※ 로그인 화면의 “📄 주보” 버튼은 이 링크가 입력되어 있을 때만 표시됩니다.
               </div>
             </div>
-
             <div style={{ marginTop: 16 }}>
               <h4 style={{ marginBottom: 6, color: '#1D3557' }}>홈 화면 공지</h4>
               <input

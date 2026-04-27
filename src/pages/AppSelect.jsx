@@ -146,19 +146,48 @@ export default function AppSelect({ user, onLogout }) {
                             <span style={{ color: '#1D1D1F' }}>{user.name}</span> 님
                         </h2>
                     </div>
-                    <button
-                        onClick={onLogout}
-                        style={{
-                            background: '#E5E5EA',
-                            padding: '8px 16px',
-                            borderRadius: '20px',
-                            color: '#1565C0',
-                            fontSize: '15px',
-                            fontWeight: 600
-                        }}
-                    >
-                        로그아웃
-                    </button>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <button
+                            onClick={() => {
+                                const pwd = window.prompt('관리자 비밀번호를 입력해주세요.');
+                                if (pwd === '8395') {
+                                    navigate('/master-admin');
+                                } else if (pwd !== null) {
+                                    alert('비밀번호가 일치하지 않습니다.');
+                                }
+                            }}
+                            style={{
+                                background: '#F0F0F5',
+                                padding: '8px 16px',
+                                borderRadius: '20px',
+                                color: '#1D1D1F',
+                                fontSize: '15px',
+                                fontWeight: 600,
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6
+                            }}
+                        >
+                            ⚙️ 설정
+                        </button>
+                        <button
+                            onClick={onLogout}
+                            style={{
+                                background: '#E5E5EA',
+                                padding: '8px 16px',
+                                borderRadius: '20px',
+                                color: '#1565C0',
+                                fontSize: '15px',
+                                fontWeight: 600,
+                                border: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            로그아웃
+                        </button>
+                    </div>
                 </header>
 
                 {/* Notice Banner */}
@@ -182,32 +211,34 @@ export default function AppSelect({ user, onLogout }) {
                 )}
 
                 {/* Passion Week Banner */}
-                <div
-                    onClick={() => navigate('/passion-week')}
-                    style={{
-                        cursor: 'pointer',
-                        padding: 0,
-                        display: 'flex',
-                        position: 'relative',
-                        overflow: 'hidden',
-                        marginBottom: 30,
-                        borderRadius: 16,
-                        boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-                        background: '#f8f8f8',
-                        width: '100%'
-                    }}
-                >
-                    {/* 최종 고화질 배너 이미지 적용 */}
-                    <img 
-                        src="/passion-banner-final.png" 
-                        alt="Passion Week" 
-                        style={{ 
-                            width: '100%', 
-                            height: 'auto',
-                            display: 'block'
-                        }} 
-                    />
-                </div>
+                {settings.showPassionBanner && (
+                    <div
+                        onClick={() => navigate('/passion-week')}
+                        style={{
+                            cursor: 'pointer',
+                            padding: 0,
+                            display: 'flex',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            marginBottom: 30,
+                            borderRadius: 16,
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+                            background: '#f8f8f8',
+                            width: '100%'
+                        }}
+                    >
+                        {/* 최종 고화질 배너 이미지 적용 */}
+                        <img 
+                            src="/passion-banner-final.png" 
+                            alt="Passion Week" 
+                            style={{ 
+                                width: '100%', 
+                                height: 'auto',
+                                display: 'block'
+                            }} 
+                        />
+                    </div>
+                )}
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, 1fr)',
