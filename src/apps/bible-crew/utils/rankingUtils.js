@@ -1,3 +1,7 @@
+/*
+ * ⛔ DO NOT EDIT: 월간 완주 및 순위 계산 핵심 로직
+ * 이 로직은 수동결산 시 메달 부여 여부를 결정하는 가장 기초가 되는 연산입니다.
+ */
 import { getMonthDates } from './dateUtils';
 import { CREW_KEYS } from './crewConfig';
 import { getDailyBiblePortionByCrew } from './bibleUtils';

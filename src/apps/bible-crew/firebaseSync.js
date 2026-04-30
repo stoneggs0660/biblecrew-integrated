@@ -111,6 +111,7 @@ export function subscribeToSingleCrewData(crew, callback) {
   return unsubscribe;
 }
 
+// ⛔ DO NOT EDIT: 앱 핵심 체크인 로직 (성경 읽기 기록)
 export function saveCrewCheck(crew, uid, date, value) {
   const path = ref(db, `crews/${crew}/users/${uid}/checks/${date}`);
   return set(path, value);
@@ -365,6 +366,7 @@ export function subscribeToMonthlyMedalStatus(year, month2, callback) {
 }
 
 // ✅ 명예의 전당: 월 데이터 저장 (금/은/동 + 1독 달성자)
+// ⛔ DO NOT EDIT: 명예의 전당 및 메달 영수증 발행 (수동결산 핵심)
 export async function saveMonthlyHallOfFame(year, month, ranking, dokAchievers = []) {
   const db2 = getDatabase();
   const monthStr = String(month).padStart(2, '0');
@@ -1262,6 +1264,7 @@ function getMonthDates(year, month) {
   return dates;
 }
 
+// ⛔ DO NOT EDIT: 전체 데이터 정합성 동기화 (전수 조사 및 복구)
 export async function runMedalFixOps() {
   console.log("--- 🛠️ [클라이언트 실행] 메달/보고서 데이터 일괄 복구 및 정제(Fix) ---");
   const db2 = getDatabase();
@@ -1431,6 +1434,7 @@ export async function runMedalFixOps() {
  * ✅ [Idempotency] 사용자의 메달 영수증(earnedMedals)을 전수 조사하여 
  * 최종 메달 카운트(medals/{gold|silver|bronze})를 동시성 이슈 없이 재계산합니다.
  */
+// ⛔ DO NOT EDIT: 메달 카운트 재계산 (Idempotent)
 export async function recalculateUserMedals(uid) {
   if (!uid) return;
   const db = getDatabase();

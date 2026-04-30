@@ -274,7 +274,9 @@ function AdminStatsSearchBlock({ users, currentYmKey }) {
         lineHeight: 1.5,
         fontWeight: 600
       }}>
-        💡 워크플로우: 반배정명단 + 성경읽기체크 완주자 확인 ➜ 메달 수여 ➜ 각종 출력
+        💡 결산 워크플로우: 앱은 아래의 흐름으로 결산을 도출합니다.<br />
+        반 배정명단 확인 -&gt; 완주자 확인 -&gt; 메달수여 -&gt; 메달 종합하여 1독 등 각종 결산 출력<br />
+        (수정을 하려면 반드시 해야할 것: 반배정명단에 이름 등록 + 완주체크)
       </div>
 
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center' }}>
@@ -982,6 +984,7 @@ export default function AdminPage({ user }) {
 
 
   // ✅ [개선] 수동 결산 확정 (마감 작업)
+  // ⛔ DO NOT EDIT: 수동결산 UI 핸들러 및 데이터 가공 로직
   async function handleFinalizeSettlement(year, month) {
     if (!window.confirm(`${year}년 ${month}월 결산을 확정하시겠습니까?\n(이미 확정된 경우 덮어쓰며 메달 숫자가 재계산됩니다.)`)) return;
 
@@ -2221,17 +2224,17 @@ export default function AdminPage({ user }) {
 
             <div style={{ fontSize: 13, background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: 8, lineHeight: 1.6 }}>
               <div style={{ fontWeight: 800, color: '#A8DADC', marginBottom: 4 }}>📌 기능</div>
-              1) 매 달 1일 수동결산<br />
-              2) 메달 수가 맞지 않을 때 언제든지 수동결산
+              1) 매달 1일에 위 결산버튼 눌러야 합니다.<br />
+              2) 메달 수가 맞지 않을 때 언제든지 수동결산으로 수정하세요.
               
-              <div style={{ fontWeight: 800, color: '#E63946', margin: '10px 0 4px' }}>⚠️ 사전확인 할 것</div>
-              (7), (8)번으로 수정할 인원의 반배정과 성경읽기표를 미리 확인 및 수정할 것
+              <div style={{ fontWeight: 800, color: '#E63946', margin: '10px 0 4px' }}>⚠️ 결산버튼 누르기 전 사전확인사항</div>
+              (7)번으로 수정할 인원의 반배정과 성경읽기표를 미리 확인 및 수정할 것
 
-              <div style={{ fontWeight: 800, color: '#A8DADC', margin: '10px 0 4px' }}>📝 워크플로우 (설명)</div>
-              • 해당 월의 모든 메달 삭제<br />
-              • 해당 월의 반 배정과 성경체크 완주자 확인<br />
-              • 새로운 메달 수여<br />
-              • 기타 출력(개인기록, 명예의 전당, 1독현황, 남은 조각 등) 실시간 연동
+              <div style={{ fontWeight: 800, color: '#A8DADC', margin: '10px 0 4px' }}>📝 수동결산을 위해 아래를 진행하세요</div>
+              • 오류가 난 사용자의 해당 월의 모든 메달 삭제 하기 (7번)<br />
+              • 해당 월의 반 배정과 성경체크 완주 확인하기 (7번)<br />
+              • 새로운 메달 수여(7번)<br />
+              • 기타 출력(개인기록, 명예의 전당, 1독현황, 남은 조각 등) 자동 연동됩니다.
             </div>
           </div>
           <div

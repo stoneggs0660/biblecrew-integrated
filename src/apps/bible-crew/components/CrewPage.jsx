@@ -8,6 +8,7 @@ import RunningCoursePath from './RunningCoursePath';
 import { getCrewLabel } from '../utils/crewConfig';
 import { getTodayCrewState } from '../utils/crewStatusUtils';
 import { calculateDokStatus } from '../utils/dokUtils';
+import BibleCalendar from './BibleCalendar';
 
 export default function CrewPage({ crewName, user }) {
   const displayName = `${getCrewLabel(crewName)} 성경크루`;
@@ -28,6 +29,7 @@ export default function CrewPage({ crewName, user }) {
   const [usersMap, setUsersMap] = useState({});
   const [approvalList, setApprovalList] = useState([]); // ✅ 현재 반 전체 승인 명단 추가
   const [showCrewStatus, setShowCrewStatus] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const settings = useSettings();
   const approvalModes = (settings && settings.approval) || {};
@@ -631,6 +633,37 @@ export default function CrewPage({ crewName, user }) {
           <div style={{ marginTop: 4, fontSize: 16, color: '#4B5563' }}>
             ({monthChapters}장 / {totalChapters}장)
           </div>
+          <button
+            onClick={() => setShowCalendar(true)}
+            style={{
+              marginTop: 14,
+              padding: '10px 22px',
+              borderRadius: '24px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #FFB347 0%, #FF8C00 100%)',
+              color: '#FFFFFF',
+              fontSize: '14px',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              boxShadow: '0 10px 20px -5px rgba(255, 140, 0, 0.4)',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              letterSpacing: '-0.01em'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(255, 140, 0, 0.5)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(255, 140, 0, 0.4)';
+            }}
+          >
+            <span style={{ fontSize: '18px' }}>📅</span>
+            <span>{month}월 러닝 달력</span>
+          </button>
         </div>
       </div>
 
@@ -1266,9 +1299,29 @@ export default function CrewPage({ crewName, user }) {
           ← 홈으로
         </button>
       </div >
+
+      {showCalendar && (
+        <BibleCalendar
+          year={year}
+          month={month}
+          portions={portions}
+          checks={checks}
+          onClose={() => setShowCalendar(false)}
+          onNavigate={(targetDate) => {
+            setShowCalendar(false);
+            const [y, m, d] = targetDate.split('-').map(Number);
+            setCurrent(new Date(y, m - 1, d));
+          }}
+        />
+      )}
     </div >
   );
 }
+
+const CalendarModalPortal = ({ show, children }) => {
+  if (!show) return null;
+  return children;
+};
 
 
 {/* 이번달 크루 현황 */ }
